@@ -3,34 +3,30 @@ package com.example.manualview
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.compose.foundation.background
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.manualview.ui.theme.ManualviewTheme
-import java.util.Locale
-import kotlin.math.floor
+import androidx.lifecycle.ViewModel
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
-            ManualviewTheme {
+            MaterialTheme {
                 Surface(Modifier.fillMaxSize()) {
                     Box(Modifier.fillMaxSize().systemBarsPadding()) {
-                        PresupuestoScreen()
+                        QuizApp()
                     }
                 }
             }
@@ -38,284 +34,401 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-enum class Categoria(val nombre: String) {
-    COMIDA("Comida"),
-    TRANSPORTE("Transporte"),
-    RENTA("Renta"),
-    OCIO("Ocio"),
-    OTROS("Otros")
-}
+data class Pregunta(val texto: String, val opciones: List<String>, val correcta: Int)
 
-data class Gasto(
-    val id: Int,
-    val concepto: String,
-    val monto: Double,
-    val categoria: Categoria
+enum class Pantalla { INICIO, QUIZ, RESULTADO }
+
+private val preguntas = listOf(
+    Pregunta(
+        "¿Qué palabra clave declara una variable que no puede cambiar su valor en Kotlin?",
+        listOf("var", "val", "let", "static"), 1
+    ),
+    Pregunta(
+        "¿Cuál es el resultado de 7 % 3?",
+        listOf("2", "1", "0", "3"), 1
+    ),
+    Pregunta(
+        "¿Qué tipo de dato conviene usar para guardar el valor 3.14?",
+        listOf("Int", "Double", "String", "Boolean"), 1
+    ),
+    Pregunta(
+        "¿Qué estructura repite un bloque mientras se cumpla una condición?",
+        listOf("if", "when", "while", "class"), 2
+    ),
+    Pregunta(
+        "¿Qué índice tiene el primer elemento de una lista?",
+        listOf("0", "1", "-1", "Depende de la lista"), 0
+    )
 )
 
-private val rojo = Color(0xFFB3261E)
-private val verde = Color(0xFF2E7D32)
-private val naranja = Color(0xFFF9A825)
+private val rojoBorde = Color(0xFFB3261E)
+private val rojoFondo = Color(0xFFF9DEDC)
+private val verdeBorde = Color(0xFF2E7D32)
+private val verdeFondo = Color(0xFFDDEFD9)
 
-// sin decimales cuando el número es entero ($2,000), con 2 si no ($85.50)
-private fun dinero(x: Double): String =
-    if (x == floor(x)) "$" + String.format(Locale.US, "%,.0f", x)
-    else "$" + String.format(Locale.US, "%,.2f", x)
+class QuizViewModel : ViewModel() {
+    var pantalla by mutableStateOf(Pantalla.INICIO)
+        private set
+    var nombre by mutableStateOf("")
+        private set
+    var indicePregunta by mutableIntStateOf(0)
+        private set
+    var seleccionada by mutableStateOf<Int?>(null)
+        private set
+    var respondida by mutableStateOf(false)
+        private set
+    var puntaje by mutableIntStateOf(0)
+        private set
+
+    val preguntaActual: Pregunta
+        get() = preguntas[indicePregunta]
+
+    fun onNombreChange(nuevoNombre: String) {
+        nombre = nuevoNombre
+    }
+
+    fun seleccionarOpcion(index: Int) {
+        if (!respondida) {
+            seleccionada = index
+        }
+    }
+
+    fun confirmar() {
+        if (seleccionada != null && !respondida) {
+            respondida = true
+            if (seleccionada == preguntaActual.correcta) {
+                puntaje++
+            }
+        }
+    }
+
+    fun siguiente() {
+        if (indicePregunta < preguntas.size - 1) {
+            indicePregunta++
+            seleccionada = null
+            respondida = false
+        } else {
+            pantalla = Pantalla.RESULTADO
+        }
+    }
+
+    fun reintentar() {
+        indicePregunta = 0
+        seleccionada = null
+        respondida = false
+        puntaje = 0
+        pantalla = Pantalla.QUIZ
+    }
+
+    fun cambiarJugador() {
+        indicePregunta = 0
+        seleccionada = null
+        respondida = false
+        puntaje = 0
+        nombre = ""
+        pantalla = Pantalla.INICIO
+    }
+
+    fun iniciarQuiz() {
+        indicePregunta = 0
+        seleccionada = null
+        respondida = false
+        puntaje = 0
+        pantalla = Pantalla.QUIZ
+    }
+}
 
 @Composable
-fun PresupuestoScreen() {
-    var ingresoTexto by remember { mutableStateOf("") }
-    val gastos = remember { mutableStateListOf<Gasto>() }
-    var siguienteId by remember { mutableIntStateOf(1) }
+fun QuizApp(viewModel: QuizViewModel = remember { QuizViewModel() }) {
+    when (viewModel.pantalla) {
+        Pantalla.INICIO -> InicioScreen(
+            nombre = viewModel.nombre,
+            onNombreChange = viewModel::onNombreChange,
+            onComenzar = viewModel::iniciarQuiz
+        )
 
-    val ingreso = ingresoTexto.toDoubleOrNull() ?: 0.0
+        Pantalla.QUIZ -> PreguntaScreen(
+            pregunta = viewModel.preguntaActual,
+            numero = viewModel.indicePregunta + 1,
+            total = preguntas.size,
+            puntaje = viewModel.puntaje,
+            seleccionada = viewModel.seleccionada,
+            respondida = viewModel.respondida,
+            onSeleccionar = viewModel::seleccionarOpcion,
+            onConfirmar = viewModel::confirmar,
+            onSiguiente = viewModel::siguiente
+        )
+
+        Pantalla.RESULTADO -> ResultadoScreen(
+            nombre = viewModel.nombre,
+            puntaje = viewModel.puntaje,
+            total = preguntas.size,
+            onReintentar = viewModel::reintentar,
+            onCambiarJugador = viewModel::cambiarJugador
+        )
+    }
+}
+
+@Composable
+fun InicioScreen(
+    nombre: String,
+    onNombreChange: (String) -> Unit,
+    onComenzar: () -> Unit
+) {
+    Column(
+        Modifier
+            .fillMaxSize()
+            .padding(16.dp),
+        verticalArrangement = Arrangement.Center
+    ) {
+        Text("Quiz de programación", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
+        Spacer(Modifier.height(8.dp))
+        Text(
+            "5 preguntas de fundamentos. ¿Cómo te llamas?",
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Spacer(Modifier.height(24.dp))
+        OutlinedTextField(
+            value = nombre,
+            onValueChange = onNombreChange,
+            label = { Text("Tu nombre") },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth()
+        )
+        Spacer(Modifier.height(24.dp))
+        Button(
+            onClick = onComenzar,
+            enabled = nombre.trim().length >= 2,
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(52.dp)
+        ) {
+            Text("Comenzar", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+        }
+    }
+}
+
+@Composable
+fun PreguntaScreen(
+    pregunta: Pregunta,
+    numero: Int,
+    total: Int,
+    puntaje: Int,
+    seleccionada: Int?,
+    respondida: Boolean,
+    onSeleccionar: (Int) -> Unit,
+    onConfirmar: () -> Unit,
+    onSiguiente: () -> Unit
+) {
+    val acerto = seleccionada == pregunta.correcta
 
     Column(
         Modifier
             .fillMaxSize()
-            .verticalScroll(rememberScrollState())
             .padding(16.dp)
     ) {
-        Text("Mi presupuesto", style = MaterialTheme.typography.headlineMedium)
+        Text("Quiz de programación", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
         Spacer(Modifier.height(20.dp))
-
-        OutlinedTextField(
-            value = ingresoTexto,
-            onValueChange = { ingresoTexto = it },
-            label = { Text("Ingreso mensual") },
-            prefix = { Text("$ ") },
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-            singleLine = true,
-            modifier = Modifier.fillMaxWidth()
-        )
-
-        Spacer(Modifier.height(12.dp))
-        ResumenPresupuesto(ingreso, gastos)
-
-        Spacer(Modifier.height(20.dp))
-        FormularioGasto(onAgregar = { concepto, monto, categoria ->
-            gastos.add(Gasto(siguienteId, concepto, monto, categoria))
-            siguienteId++
-        })
-
-        Spacer(Modifier.height(20.dp))
-        ListaGastos(gastos, onEliminar = { g -> gastos.remove(g) })
-    }
-}
-
-// concepto, monto, categoria y menuAbierto se quedan aquí: son estado de edición
-// y al padre solo le sirve recibir el gasto ya armado.
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-fun FormularioGasto(onAgregar: (concepto: String, monto: Double, Categoria) -> Unit) {
-    var concepto by remember { mutableStateOf("") }
-    var montoTexto by remember { mutableStateOf("") }
-    var categoria by remember { mutableStateOf(Categoria.COMIDA) }
-    var menuAbierto by remember { mutableStateOf(false) }
-
-    val monto = montoTexto.toDoubleOrNull()
-    val valido = concepto.isNotBlank() && monto != null && monto > 0
-
-    Column {
-        Text("Nuevo gasto", fontSize = 22.sp, fontWeight = FontWeight.Bold)
-        Spacer(Modifier.height(8.dp))
-
-        OutlinedTextField(
-            value = concepto,
-            onValueChange = { concepto = it },
-            label = { Text("Concepto") },
-            singleLine = true,
-            modifier = Modifier.fillMaxWidth()
-        )
 
         Row(
-            Modifier.padding(top = 8.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
+            Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            OutlinedTextField(
-                value = montoTexto,
-                onValueChange = { montoTexto = it },
-                label = { Text("Monto") },
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                singleLine = true,
-                modifier = Modifier.weight(1f)
+            Text(
+                "Pregunta $numero de $total",
+                fontSize = 18.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
             )
-
-            ExposedDropdownMenuBox(
-                expanded = menuAbierto,
-                onExpandedChange = { menuAbierto = it },
-                modifier = Modifier.weight(1f)
-            ) {
-                OutlinedTextField(
-                    value = categoria.nombre,
-                    onValueChange = {},
-                    readOnly = true,
-                    label = { Text("Categoría") },
-                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = menuAbierto) },
-                    modifier = Modifier.menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable)
-                )
-                ExposedDropdownMenu(
-                    expanded = menuAbierto,
-                    onDismissRequest = { menuAbierto = false }
-                ) {
-                    Categoria.entries.forEach { c ->
-                        DropdownMenuItem(
-                            text = { Text(c.nombre) },
-                            onClick = {
-                                categoria = c
-                                menuAbierto = false
-                            }
-                        )
-                    }
-                }
-            }
+            Text(
+                "Puntaje: $puntaje",
+                fontSize = 18.sp,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.primary
+            )
         }
-
-        Spacer(Modifier.height(12.dp))
-        FilledTonalButton(
-            onClick = {
-                onAgregar(concepto.trim(), monto!!, categoria)
-                concepto = ""
-                montoTexto = ""
-            },
-            enabled = valido,
-            modifier = Modifier.fillMaxWidth().height(52.dp)
-        ) { Text("Agregar gasto", fontWeight = FontWeight.Bold, fontSize = 16.sp) }
-    }
-}
-
-@Composable
-fun ListaGastos(gastos: List<Gasto>, onEliminar: (Gasto) -> Unit) {
-    Column {
-        Text("Gastos recientes", fontSize = 22.sp, fontWeight = FontWeight.Bold)
         Spacer(Modifier.height(8.dp))
-        if (gastos.isEmpty()) {
-            Text("Todavía no hay gastos", color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
-        gastos.forEach { g ->
-            Row(
-                Modifier
-                    .fillMaxWidth()
-                    .padding(vertical = 6.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Column(Modifier.weight(1f)) {
-                    Text(g.concepto, fontWeight = FontWeight.Bold, fontSize = 19.sp)
-                    Text(g.categoria.nombre, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-                Text("−" + dinero(g.monto), color = rojo, fontWeight = FontWeight.Bold, fontSize = 18.sp)
-                IconButton(onClick = { onEliminar(g) }) {
-                    Text(
-                        "✕",
-                        fontSize = 18.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
+        LinearProgressIndicator(
+            progress = { numero / total.toFloat() },
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(8.dp)
+        )
+
+        Spacer(Modifier.height(24.dp))
+        Text(
+            pregunta.texto,
+            fontSize = 22.sp,
+            fontWeight = FontWeight.Bold,
+            lineHeight = 30.sp
+        )
+        Spacer(Modifier.height(24.dp))
+
+        pregunta.opciones.forEachIndexed { i, opcion ->
+            val esCorrecta = respondida && i == pregunta.correcta
+            val esMala = respondida && i == seleccionada && i != pregunta.correcta
+
+            val fondo = when {
+                esCorrecta -> verdeFondo
+                esMala -> rojoFondo
+                else -> Color.Transparent
             }
-        }
-    }
-}
-
-@Composable
-fun ResumenPresupuesto(ingreso: Double, gastos: List<Gasto>) {
-
-    val total = gastos.sumOf { it.monto }
-    val saldo = ingreso - total
-    val porcentaje = if (ingreso > 0) (total / ingreso).toFloat() else 0f
-    val top = gastos
-        .groupBy { it.categoria }
-        .mapValues { (_, lista) -> lista.sumOf { it.monto } }
-        .maxByOrNull { it.value }
-
-    val fondoCard = when {
-        porcentaje > 1f -> Color(0xFFFBE4E1)
-        porcentaje >= 0.8f -> Color(0xFFFFF5DC)
-        else -> Color(0xFFF3EDF7)
-    }
-    val colorBarra = when {
-        porcentaje > 1f -> rojo
-        porcentaje >= 0.8f -> naranja
-        else -> MaterialTheme.colorScheme.primary
-    }
-
-    Card(
-        colors = CardDefaults.cardColors(containerColor = fondoCard),
-        shape = RoundedCornerShape(24.dp),
-        modifier = Modifier.fillMaxWidth()
-    ) {
-        Column(Modifier.padding(20.dp)) {
-            Row(Modifier.fillMaxWidth()) {
-                Column(Modifier.weight(1f)) {
-                    Text("Gastado", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Text(dinero(total), fontSize = 30.sp, fontWeight = FontWeight.Bold)
-                }
-                Column(Modifier.weight(1f)) {
-                    Text("Saldo", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Text(
-                        dinero(saldo),
-                        fontSize = 30.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = if (saldo >= 0) verde else rojo
-                    )
-                }
+            val borde = when {
+                esCorrecta -> BorderStroke(2.dp, verdeBorde)
+                esMala -> BorderStroke(2.dp, rojoBorde)
+                else -> BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
             }
-            Spacer(Modifier.height(12.dp))
-            LinearProgressIndicator(
-                progress = { porcentaje.coerceIn(0f, 1f) },
-                color = colorBarra,
-                trackColor = Color(0xFFE7E0EC),
+
+            Surface(
+                color = fondo,
+                shape = RoundedCornerShape(16.dp),
+                border = borde,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(10.dp)
-            )
-            Spacer(Modifier.height(12.dp))
-            val textoTop = if (top != null) " · Mayor gasto: ${top.key.nombre} (${dinero(top.value)})" else ""
-            Text("${(porcentaje * 100).toInt()} % usado$textoTop", fontSize = 15.sp)
+                    .padding(bottom = 8.dp)
+                    .clickable(enabled = !respondida) { onSeleccionar(i) }
+            ) {
+                Row(
+                    Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    RadioButton(
+                        selected = seleccionada == i,
+                        onClick = null,
+                        colors = RadioButtonDefaults.colors(
+                            selectedColor = if (esMala) rojoBorde else MaterialTheme.colorScheme.primary
+                        )
+                    )
+                    Text(
+                        opcion,
+                        fontSize = 18.sp,
+                        fontWeight = if (esCorrecta || esMala || (!respondida && seleccionada == i))
+                            FontWeight.Bold else FontWeight.Normal,
+                        modifier = Modifier
+                            .weight(1f)
+                            .padding(start = 16.dp)
+                    )
+                    if (esCorrecta) Text("✓", fontSize = 20.sp, color = verdeBorde, fontWeight = FontWeight.Bold)
+                    if (esMala) Text("✕", fontSize = 20.sp, color = rojoBorde, fontWeight = FontWeight.Bold)
+                }
+            }
         }
-    }
 
-    if (porcentaje > 1f) {
-        Alerta(
-            fondo = Color(0xFFF9DEDC),
-            colorTexto = Color(0xFF8C1D18),
-            texto = "Te pasaste del presupuesto por ${dinero(total - ingreso)}"
-        )
-    } else if (porcentaje >= 0.8f) {
-        Alerta(
-            fondo = Color(0xFFFFDFB5),
-            colorTexto = Color(0xFF7A4A00),
-            texto = "Cuidado: pasaste el 80 %"
-        )
+        if (respondida) {
+            Spacer(Modifier.height(8.dp))
+            Surface(
+                color = if (acerto) verdeFondo else rojoFondo,
+                shape = RoundedCornerShape(16.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(
+                    if (acerto) "¡Correcto!"
+                    else "Incorrecto. La respuesta correcta es '${pregunta.opciones[pregunta.correcta]}'.",
+                    color = if (acerto) Color(0xFF1B5E20) else Color(0xFF8C1D18),
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 16.sp,
+                    modifier = Modifier.padding(16.dp)
+                )
+            }
+        }
+
+        Spacer(Modifier.weight(1f))
+
+        Row(
+            Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            FilledTonalButton(
+                onClick = onConfirmar,
+                enabled = seleccionada != null && !respondida,
+                modifier = Modifier
+                    .weight(2f)
+                    .height(52.dp)
+            ) {
+                Text("Confirmar", fontWeight = FontWeight.Bold)
+            }
+            Button(
+                onClick = onSiguiente,
+                enabled = respondida,
+                modifier = Modifier
+                    .weight(3f)
+                    .height(52.dp)
+            ) {
+                Text(
+                    if (numero == total) "Ver resultados" else "Siguiente",
+                    fontWeight = FontWeight.Bold
+                )
+            }
+        }
     }
 }
 
 @Composable
-private fun Alerta(fondo: Color, colorTexto: Color, texto: String) {
-    Row(
+fun ResultadoScreen(
+    nombre: String,
+    puntaje: Int,
+    total: Int,
+    onReintentar: () -> Unit,
+    onCambiarJugador: () -> Unit
+) {
+    val mensaje = when {
+        puntaje <= 2 -> "Sigue practicando"
+        puntaje <= 4 -> "Buen trabajo"
+        else -> "Perfecto"
+    }
+
+    Column(
         Modifier
-            .fillMaxWidth()
-            .padding(top = 12.dp)
-            .background(fondo, RoundedCornerShape(16.dp))
-            .padding(horizontal = 16.dp, vertical = 14.dp),
-        verticalAlignment = Alignment.CenterVertically
+            .fillMaxSize()
+            .padding(24.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
     ) {
-        Text("⚠️", fontSize = 20.sp)
-        Spacer(Modifier.width(12.dp))
-        Text(texto, color = colorTexto, fontWeight = FontWeight.Bold, fontSize = 17.sp)
+        Text(
+            "¡Muy bien, $nombre!",
+            fontSize = 26.sp,
+            fontWeight = FontWeight.Bold,
+            textAlign = TextAlign.Center
+        )
+        Spacer(Modifier.height(16.dp))
+        Text(
+            "$puntaje de $total",
+            fontSize = 56.sp,
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.primary
+        )
+        Spacer(Modifier.height(8.dp))
+        Text(
+            mensaje,
+            fontSize = 20.sp,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            fontWeight = FontWeight.Medium
+        )
+
+        Spacer(Modifier.height(40.dp))
+        Button(
+            onClick = onReintentar,
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(52.dp)
+        ) {
+            Text("Reintentar", fontWeight = FontWeight.Bold)
+        }
+        Spacer(Modifier.height(12.dp))
+        OutlinedButton(
+            onClick = onCambiarJugador,
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(52.dp)
+        ) {
+            Text("Cambiar jugador", fontWeight = FontWeight.Bold)
+        }
     }
 }
 
 @Preview(showBackground = true)
 @Composable
-fun ListaGastosPreview() {
-    ManualviewTheme {
-        ListaGastos(
-            gastos = listOf(
-                Gasto(1, "Renta mensual", 2000.0, Categoria.RENTA),
-                Gasto(2, "Despensa", 650.0, Categoria.COMIDA)
-            ),
-            onEliminar = {}
-        )
+fun ResultadoPreview() {
+    MaterialTheme {
+        ResultadoScreen("Ana", 4, 5, {}, {})
     }
 }
