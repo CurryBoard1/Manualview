@@ -3,18 +3,20 @@ package com.example.manualview
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -25,205 +27,266 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         setContent {
             ManualviewTheme {
-                Surface(modifier = Modifier.fillMaxSize()) {
-                    LecturaScreen()
+                Surface(Modifier.fillMaxSize()) {
+                    Box(Modifier.fillMaxSize().systemBarsPadding()) {
+                        InscripcionScreen()
+                    }
                 }
             }
         }
     }
 }
 
+// taller -> lugares que quedan
+private val cupos = mapOf("Pintura" to 8, "Fotografía" to 6, "Guitarra" to 4)
+private val talleres = cupos.keys.toList()
+
+fun validarNombre(nombre: String): String? =
+    if (nombre.trim().length < 3) "Escribe tu nombre completo (mínimo 3 caracteres)" else null
+
+fun validarCorreo(correo: String): String? {
+    val arroba = correo.indexOf('@')
+    val punto = correo.indexOf('.', arroba + 1)
+    val bien = arroba > 0 && punto > arroba + 1 && punto < correo.length - 1
+    return if (bien) null else "Ingresa un correo válido"
+}
+
+fun validarEdad(edad: String): String? {
+    val n = edad.toIntOrNull()
+    return if (n == null || n < 12 || n > 99) "La edad debe estar entre 12 y 99" else null
+}
+
+fun validarAviso(acepta: Boolean): String? =
+    if (acepta) null else "Debes aceptar el aviso de privacidad"
+
 @Composable
-fun LecturaScreen() {
-    // Variables de estado para los ajustes de lectura
-    var tamano by remember { mutableFloatStateOf(20f) }
-    var interlineado by remember { mutableStateOf("Normal") }
-    var modoOscuro by remember { mutableStateOf(false) }
-    var usaSerif by remember { mutableStateOf(false) }
+fun InscripcionScreen() {
+    var nombre by rememberSaveable { mutableStateOf("") }
+    var correo by rememberSaveable { mutableStateOf("") }
+    var edad by rememberSaveable { mutableStateOf("") }
+    var taller by rememberSaveable { mutableStateOf(talleres[0]) }
+    var aceptaAviso by rememberSaveable { mutableStateOf(false) }
+    var intentoEnviar by rememberSaveable { mutableStateOf(false) }
+    var inscrito by rememberSaveable { mutableStateOf(false) }
 
-    // Texto de prueba para la vista previa
-    val textoPrueba = "Era un dia muy tranquilo en utt hasta que inició el CUATRIMESTRE, a 1 2 3 4 5 6 7 8 9 !  # $ % & /("
+    val errNombre = validarNombre(nombre)
+    val errCorreo = validarCorreo(correo)
+    val errEdad = validarEdad(edad)
+    val errAviso = validarAviso(aceptaAviso)
 
-    MaterialTheme(
-        colorScheme = if (modoOscuro) darkColorScheme() else lightColorScheme()
+    if (inscrito) {
+        ConfirmacionScreen(
+            nombre = nombre,
+            correo = correo,
+            taller = taller,
+            onNueva = {
+                nombre = ""
+                correo = ""
+                edad = ""
+                taller = talleres[0]
+                aceptaAviso = false
+                intentoEnviar = false
+                inscrito = false
+            }
+        )
+    } else {
+        InscripcionForm(
+            nombre = nombre, onNombreChange = { nombre = it },
+            correo = correo, onCorreoChange = { correo = it },
+            edad = edad, onEdadChange = { nueva -> edad = nueva.filter { it.isDigit() } },
+            taller = taller, onTallerChange = { taller = it },
+            aceptaAviso = aceptaAviso, onAceptaAvisoChange = { aceptaAviso = it },
+            errNombre = if (intentoEnviar) errNombre else null,
+            errCorreo = if (intentoEnviar) errCorreo else null,
+            errEdad = if (intentoEnviar) errEdad else null,
+            errAviso = if (intentoEnviar) errAviso else null,
+            onEnviar = {
+                intentoEnviar = true
+                if (errNombre == null && errCorreo == null && errEdad == null && errAviso == null) {
+                    inscrito = true
+                }
+            }
+        )
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun InscripcionForm(
+    nombre: String, onNombreChange: (String) -> Unit,
+    correo: String, onCorreoChange: (String) -> Unit,
+    edad: String, onEdadChange: (String) -> Unit,
+    taller: String, onTallerChange: (String) -> Unit,
+    aceptaAviso: Boolean, onAceptaAvisoChange: (Boolean) -> Unit,
+    errNombre: String?, errCorreo: String?, errEdad: String?, errAviso: String?,
+    onEnviar: () -> Unit
+) {
+    var menuAbierto by remember { mutableStateOf(false) }
+
+    Column(
+        Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(16.dp)
     ) {
-        Surface(
-            modifier = Modifier.fillMaxSize(),
-            color = MaterialTheme.colorScheme.background
+        Text("Inscripción a talleres", style = MaterialTheme.typography.headlineMedium)
+        Spacer(Modifier.height(20.dp))
+        Text(
+            "Casa del Lago · cupo limitado",
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Spacer(Modifier.height(4.dp))
+
+        CampoTexto("Nombre completo", nombre, onNombreChange, errNombre)
+        CampoTexto(
+            "Correo", correo, onCorreoChange, errCorreo,
+            KeyboardOptions(keyboardType = KeyboardType.Email)
+        )
+        CampoTexto(
+            "Edad", edad, onEdadChange, errEdad,
+            KeyboardOptions(keyboardType = KeyboardType.Number)
+        )
+
+        ExposedDropdownMenuBox(
+            expanded = menuAbierto,
+            onExpandedChange = { menuAbierto = it },
+            modifier = Modifier.padding(top = 4.dp)
         ) {
-            Column(
+            OutlinedTextField(
+                value = taller,
+                onValueChange = {},
+                readOnly = true,
+                label = { Text("Taller") },
+                trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = menuAbierto) },
                 modifier = Modifier
-                    .fillMaxSize()
-                    .verticalScroll(rememberScrollState())
-                    .padding(16.dp)
+                    .menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable)
+                    .fillMaxWidth()
+            )
+            ExposedDropdownMenu(
+                expanded = menuAbierto,
+                onDismissRequest = { menuAbierto = false }
             ) {
-                // Título de la pantalla
-                Text(
-                    text = "Ajustes de lectura",
-                    fontSize = 24.sp,
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier.padding(vertical = 8.dp)
-                )
-
-                Spacer(modifier = Modifier.height(16.dp))
-
-                // Tamaño de letra
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(text = "Tamaño de letra", fontSize = 16.sp)
-                    Text(
-                        text = "${tamano.toInt()} sp",
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.primary
-                    )
-                }
-
-                Slider(
-                    value = tamano,
-                    onValueChange = { tamano = it },
-                    valueRange = 14f..32f
-                )
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Text(text = "A", fontSize = 14.sp)
-                    Text(text = "A", fontSize = 24.sp)
-                }
-
-                Spacer(modifier = Modifier.height(16.dp))
-
-                // Interlineado
-                Text(text = "Interlineado", fontSize = 16.sp)
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    val opciones = listOf("Compacto", "Normal", "Amplio")
-                    for (opcion in opciones) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            RadioButton(
-                                selected = interlineado == opcion,
-                                onClick = { interlineado = opcion }
-                            )
-                            Text(text = opcion, fontSize = 14.sp)
+                talleres.forEach { t ->
+                    DropdownMenuItem(
+                        text = { Text(t) },
+                        onClick = {
+                            onTallerChange(t)
+                            menuAbierto = false
                         }
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(16.dp))
-
-                // Modo oscuro
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(text = "Modo oscuro", fontSize = 16.sp)
-                    Switch(
-                        checked = modoOscuro,
-                        onCheckedChange = { modoOscuro = it }
                     )
-                }
-
-                Spacer(modifier = Modifier.height(16.dp))
-
-                // Fuente
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(text = "Fuente", fontSize = 16.sp)
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Button(
-                            onClick = { usaSerif = true },
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = if (usaSerif) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
-                                contentColor = if (usaSerif) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        ) {
-                            Text("Serif")
-                        }
-                        Button(
-                            onClick = { usaSerif = false },
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = if (!usaSerif) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
-                                contentColor = if (!usaSerif) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        ) {
-                            Text("Sans")
-                        }
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(24.dp))
-
-                // Sección de vista previa
-                Text(
-                    text = "VISTA PREVIA",
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-
-                Spacer(modifier = Modifier.height(8.dp))
-
-                val lineH = when (interlineado) {
-                    "Compacto" -> (tamano * 1.1f).sp
-                    "Amplio" -> (tamano * 1.6f).sp
-                    else -> (tamano * 1.35f).sp
-                }
-
-                val previewBg = if (modoOscuro) Color.White else Color(0xFF1E1E1E)
-                val previewText = if (modoOscuro) Color.Black else Color.White
-
-                Box(
-                    modifier = Modifier.fillMaxWidth()
-                        .background(previewBg, shape = RoundedCornerShape(16.dp))
-                        .padding(16.dp)
-                ) {
-                    Text(
-                        text = textoPrueba,
-                        fontSize = tamano.sp,
-                        lineHeight = lineH,
-                        fontFamily = if (usaSerif) FontFamily.Serif else FontFamily.SansSerif,
-                        color = previewText
-                    )
-                }
-
-                Spacer(modifier = Modifier.height(32.dp))
-
-                // Botón para restablecer valores por defecto
-                OutlinedButton(
-                    onClick = {
-                        tamano = 20f
-                        interlineado = "Normal"
-                        modoOscuro = false
-                        usaSerif = false
-                    },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(50.dp),
-                    shape = RoundedCornerShape(25.dp)
-                ) {
-                    Text(text = "Restablecer", fontSize = 16.sp, fontWeight = FontWeight.Bold)
                 }
             }
         }
+
+        Row(
+            Modifier.padding(top = 8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Checkbox(checked = aceptaAviso, onCheckedChange = onAceptaAvisoChange)
+            Text("Acepto el aviso de privacidad", fontSize = 17.sp)
+        }
+        if (errAviso != null) {
+            Text(
+                errAviso,
+                color = MaterialTheme.colorScheme.error,
+                fontSize = 13.sp,
+                modifier = Modifier.padding(start = 16.dp)
+            )
+        }
+
+        Spacer(Modifier.height(16.dp))
+        Button(
+            onClick = onEnviar,
+            modifier = Modifier.fillMaxWidth().height(52.dp)
+        ) { Text("Inscribirme", fontWeight = FontWeight.Bold, fontSize = 16.sp) }
+
+        Spacer(Modifier.height(16.dp))
+        Text(
+            "Quedan ${cupos[taller]} lugares en este taller",
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.fillMaxWidth()
+        )
+    }
+}
+
+@Composable
+fun CampoTexto(
+    label: String,
+    value: String,
+    onValueChange: (String) -> Unit,
+    error: String?,
+    keyboardOptions: KeyboardOptions = KeyboardOptions.Default
+) {
+    OutlinedTextField(
+        value = value,
+        onValueChange = onValueChange,
+        label = { Text(label) },
+        isError = error != null,
+        supportingText = { if (error != null) Text(error) },
+        keyboardOptions = keyboardOptions,
+        singleLine = true,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 4.dp)
+    )
+}
+
+@Composable
+fun ConfirmacionScreen(nombre: String, correo: String, taller: String, onNueva: () -> Unit) {
+    Column(
+        Modifier
+            .fillMaxSize()
+            .padding(16.dp)
+    ) {
+        Text("¡Inscripción lista!", style = MaterialTheme.typography.headlineMedium)
+        Spacer(Modifier.height(20.dp))
+
+        Card(
+            colors = CardDefaults.cardColors(containerColor = Color(0xFFF3EDF7)),
+            shape = RoundedCornerShape(20.dp),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                FilaResumen("Nombre", nombre)
+                FilaResumen("Correo", correo)
+                FilaResumen("Taller", taller)
+            }
+        }
+
+        Spacer(Modifier.height(24.dp))
+        OutlinedButton(
+            onClick = onNueva,
+            modifier = Modifier.fillMaxWidth().height(52.dp)
+        ) { Text("Nueva inscripción", fontWeight = FontWeight.Bold) }
+    }
+}
+
+@Composable
+private fun FilaResumen(titulo: String, valor: String) {
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+        Text(titulo, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(valor, fontWeight = FontWeight.Bold)
     }
 }
 
 @Preview(showBackground = true)
 @Composable
-fun LecturaScreenPreview() {
+fun InscripcionPreview() {
     ManualviewTheme {
-        LecturaScreen()
+        InscripcionScreen()
+    }
+}
+
+@Preview(showBackground = true)
+@Composable
+fun ConfirmacionPreview() {
+    ManualviewTheme {
+        ConfirmacionScreen(
+            nombre = "Ana López",
+            correo = "ana.lopez@correo.com",
+            taller = "Fotografía",
+            onNueva = {}
+        )
     }
 }
