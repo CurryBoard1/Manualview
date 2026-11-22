@@ -3,11 +3,10 @@ package com.example.manualview
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -15,12 +14,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.manualview.ui.theme.ManualviewTheme
 import java.util.Locale
+import kotlin.math.ceil
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -29,7 +30,7 @@ class MainActivity : ComponentActivity() {
             ManualviewTheme {
                 Surface(Modifier.fillMaxSize()) {
                     Box(Modifier.fillMaxSize().systemBarsPadding()) {
-                        CarritoScreen()
+                        CuentaScreen()
                     }
                 }
             }
@@ -37,205 +38,191 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-data class Producto(val nombre: String, val precio: Double)
-
-private val verde = Color(0xFF2E7D32)
-
-fun dinero(x: Double): String = "$" + String.format(Locale.US, "%,.2f", x)
+private fun dinero(x: Double) = "$" + String.format(Locale.US, "%,.2f", x)
 
 @Composable
-fun CarritoScreen() {
-    val catalogo = remember {
-        listOf(
-            Producto("SSD 6.7 KB  ", 24.0),
-            Producto("RAM 2 TB", 27.5),
-            Producto("ACEITE EN POLVO 1 KG", 52.0),
-            Producto("500 ROBUX", 38.0)
-        )
-    }
-    val cantidades = remember { mutableStateListOf(0, 0, 0, 0) }
-    var cupon by remember { mutableStateOf("") }
-    var confirmado by remember { mutableStateOf(false) }
+fun CuentaScreen() {
+    var montoTexto by remember { mutableStateOf("") }
+    var propinaPct by remember { mutableIntStateOf(10) }
+    var usaOtro by remember { mutableStateOf(false) }
+    var personas by remember { mutableIntStateOf(2) }
+    var redondear by remember { mutableStateOf(false) }
 
-
-    val articulos = cantidades.sum()
-    val subtotal = catalogo.indices.sumOf { catalogo[it].precio * cantidades[it] }
-    val descuento = if (subtotal >= 200) subtotal * 0.10 else 0.0
-    val subtotalConDescuento = subtotal - descuento
-    val descCupon = if (cupon == "DONPEPE" && articulos > 0) 20.0 else 0.0
-    val envio = when {
-        articulos == 0 -> 0.0
-        subtotalConDescuento >= 150 -> 0.0
-        else -> 25.0
-    }
-    val total = (subtotalConDescuento - descCupon).coerceAtLeast(0.0) + envio
+    // derivados
+    val monto = montoTexto.toDoubleOrNull() ?: 0.0
+    val montoInvalido = montoTexto.isNotEmpty() && montoTexto.toDoubleOrNull() == null
+    val propina = monto * propinaPct / 100.0
+    val total = monto + propina
+    val sinRedondear = total / personas
+    val porPersona = if (redondear) ceil(sinRedondear) else sinRedondear
+    val sobrante = if (redondear) porPersona * personas - total else null
 
     Column(
         Modifier
             .fillMaxSize()
-            .padding(horizontal = 16.dp, vertical = 12.dp)
+            .verticalScroll(rememberScrollState())
+            .padding(16.dp)
     ) {
+        Text("Cuenta dividida", style = MaterialTheme.typography.headlineMedium)
+        Spacer(Modifier.height(24.dp))
+
+        OutlinedTextField(
+            value = montoTexto,
+            onValueChange = { montoTexto = it },
+            label = { Text("Monto de la cuenta") },
+            prefix = { Text("$ ") },
+            isError = montoInvalido,
+            supportingText = {
+                if (montoInvalido) Text("Monto no válido, se toma como $0")
+            },
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth()
+        )
+
+        Spacer(Modifier.height(8.dp))
+        SelectorPropina(
+            porcentaje = propinaPct,
+            usaOtro = usaOtro,
+            onPorcentajeChange = { propinaPct = it },
+            onOtroChange = { usaOtro = it }
+        )
+
+        Spacer(Modifier.height(8.dp))
+        StepperPersonas(personas) { personas = it }
+
         Row(
-            Modifier.fillMaxWidth(),
+            Modifier
+                .fillMaxWidth()
+                .padding(vertical = 8.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text("Tienda Don Pepe", style = MaterialTheme.typography.headlineMedium)
-            Box(
-                Modifier
-                    .size(36.dp)
-                    .background(MaterialTheme.colorScheme.primary, CircleShape),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    "$articulos",
-                    color = MaterialTheme.colorScheme.onPrimary,
-                    fontWeight = FontWeight.Bold
-                )
-            }
+            Text("Redondear por persona", fontSize = 20.sp)
+            Switch(checked = redondear, onCheckedChange = { redondear = it })
         }
 
-        Column(
-            Modifier
-                .weight(1f)
-                .verticalScroll(rememberScrollState())
-        ) {
-            Spacer(Modifier.height(12.dp))
-            catalogo.forEachIndexed { i, producto ->
-                ProductoItem(
-                    producto = producto,
-                    cantidad = cantidades[i],
-                    onCantidadChange = { cantidades[i] = it }
-                )
-                HorizontalDivider()
-            }
+        HorizontalDivider(Modifier.padding(vertical = 8.dp))
 
-            // el cupón vive aquí en el padre porque cambia el total
-            OutlinedTextField(
-                value = cupon,
-                onValueChange = { cupon = it.uppercase() },
-                label = { Text("Cupón") },
-                singleLine = true,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 12.dp)
-            )
-
-            Spacer(Modifier.height(12.dp))
-            ResumenCarrito(articulos, subtotal, descuento, descCupon, envio, total)
-            Spacer(Modifier.height(12.dp))
-        }
-
-        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            OutlinedButton(
-                onClick = { for (i in cantidades.indices) cantidades[i] = 0 },
-                modifier = Modifier.height(52.dp)
-            ) { Text("Vaciar", fontWeight = FontWeight.Bold) }
-            Button(
-                onClick = { confirmado = true },
-                enabled = articulos > 0,
-                modifier = Modifier
-                    .weight(1f)
-                    .height(52.dp)
-            ) { Text("Confirmar pedido", fontWeight = FontWeight.Bold) }
-        }
-    }
-
-    if (confirmado) {
-        AlertDialog(
-            onDismissRequest = { },
-            title = { Text("Pedido confirmado") },
-            text = { Text("Son $articulos artículos. Total a pagar: ${dinero(total)}") },
-            confirmButton = {
-                TextButton(onClick = {
-                    for (i in cantidades.indices) cantidades[i] = 0
-                    cupon = ""
-                    confirmado = false
-                }) { Text("Listo") }
-            }
-        )
+        ResultadoCuenta(propinaPct, propina, total, porPersona, personas, sobrante)
     }
 }
 
 @Composable
-fun ProductoItem(producto: Producto, cantidad: Int, onCantidadChange: (Int) -> Unit) {
+fun SelectorPropina(
+    porcentaje: Int,
+    usaOtro: Boolean,
+    onPorcentajeChange: (Int) -> Unit,
+    onOtroChange: (Boolean) -> Unit
+) {
+    Column {
+        Text("Propina", fontSize = 20.sp)
+        Spacer(Modifier.height(8.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            listOf(10, 15, 20).forEach { p ->
+                ChipPropina("$p %", !usaOtro && porcentaje == p) {
+                    onOtroChange(false)
+                    onPorcentajeChange(p)
+                }
+            }
+            ChipPropina("Otro", usaOtro) { onOtroChange(true) }
+        }
+        if (usaOtro) {
+            Text("$porcentaje %", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+            Slider(
+                value = porcentaje.toFloat(),
+                onValueChange = { onPorcentajeChange(it.toInt()) },
+                valueRange = 0f..30f
+            )
+        }
+    }
+}
+
+@Composable
+private fun ChipPropina(texto: String, activo: Boolean, onClick: () -> Unit) {
+    FilterChip(
+        selected = activo,
+        onClick = onClick,
+        label = { Text(texto, fontSize = 16.sp) },
+        leadingIcon = if (activo) {
+            { Text("✓", fontSize = 16.sp, fontWeight = FontWeight.Bold) }
+        } else null
+    )
+}
+
+@Composable
+fun StepperPersonas(personas: Int, onChange: (Int) -> Unit) {
     Row(
-        Modifier
-            .fillMaxWidth()
-            .padding(vertical = 14.dp),
+        Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Column(Modifier.weight(1f)) {
-            Text(producto.nombre, fontWeight = FontWeight.Bold, fontSize = 19.sp)
+        Text("Personas", fontSize = 20.sp)
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            OutlinedIconButton(
+                onClick = { onChange(personas - 1) },
+                enabled = personas > 1,
+                modifier = Modifier.size(38.dp)
+            ) { Text("−", fontSize = 20.sp) }
             Text(
-                "${dinero(producto.precio)} c/u",
-                color = MaterialTheme.colorScheme.onSurfaceVariant
+                "$personas",
+                fontWeight = FontWeight.Bold,
+                fontSize = 18.sp,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.width(40.dp)
             )
+            OutlinedIconButton(
+                onClick = { onChange(personas + 1) },
+                enabled = personas < 20,
+                modifier = Modifier.size(38.dp)
+            ) { Text("+", fontSize = 20.sp) }
         }
-        OutlinedIconButton(
-            onClick = { onCantidadChange(cantidad - 1) },
-            enabled = cantidad > 0,
-            modifier = Modifier.size(38.dp)
-        ) { Text("−", fontSize = 20.sp) }
-        Text(
-            "$cantidad",
-            fontWeight = FontWeight.Bold,
-            fontSize = 18.sp,
-            modifier = Modifier.width(36.dp),
-            textAlign = TextAlign.Center
-        )
-        OutlinedIconButton(
-            onClick = { onCantidadChange(cantidad + 1) },
-            enabled = cantidad < 10,
-            modifier = Modifier.size(38.dp)
-        ) { Text("+", fontSize = 20.sp) }
     }
 }
 
 @Composable
-fun ResumenCarrito(
-    articulos: Int,
-    subtotal: Double,
-    descuento: Double,
-    descCupon: Double,
-    envio: Double,
-    total: Double
+fun ResultadoCuenta(
+    propinaPct: Int,
+    propina: Double,
+    total: Double,
+    porPersona: Double,
+    personas: Int,
+    sobrante: Double?
 ) {
     Card(
         colors = CardDefaults.cardColors(containerColor = Color(0xFFF3EDF7)),
         shape = RoundedCornerShape(24.dp),
         modifier = Modifier.fillMaxWidth()
     ) {
-        Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            FilaResumen("Artículos", "$articulos")
-            FilaResumen("Subtotal", dinero(subtotal))
-            if (descuento > 0) {
-                FilaResumen("Descuento 10 %", "−" + dinero(descuento), verde)
-            } else {
-                FilaResumen("Descuento 10 %", dinero(0.0))
-            }
-            if (descCupon > 0) {
-                FilaResumen("Cupón DONPEPE", "−" + dinero(descCupon), verde)
-            }
-            if (articulos > 0 && envio == 0.0) {
-                FilaResumen("Envío", "GRATIS", verde)
-            } else {
-                FilaResumen("Envío", dinero(envio))
-            }
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .padding(20.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            FilaDato("Propina ($propinaPct %)", dinero(propina))
+            Spacer(Modifier.height(8.dp))
+            FilaDato("Total con propina", dinero(total))
 
-            HorizontalDivider(Modifier.padding(vertical = 6.dp))
+            HorizontalDivider(Modifier.padding(vertical = 14.dp))
 
-            Row(
-                Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text("TOTAL", fontSize = 26.sp, fontWeight = FontWeight.Bold)
+            Text("Cada quien paga", fontSize = 18.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(
+                dinero(porPersona),
+                fontSize = 56.sp,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.primary
+            )
+            Text(
+                "entre $personas personas",
+                fontSize = 18.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            if (sobrante != null) {
                 Text(
-                    dinero(total),
-                    fontSize = 30.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.primary
+                    "Sobrante por redondeo: ${dinero(sobrante)}",
+                    fontSize = 14.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
         }
@@ -243,15 +230,15 @@ fun ResumenCarrito(
 }
 
 @Composable
-private fun FilaResumen(etiqueta: String, valor: String, colorValor: Color = Color.Unspecified) {
+private fun FilaDato(etiqueta: String, valor: String) {
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-        Text(etiqueta, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 17.sp)
-        Text(valor, fontWeight = FontWeight.Bold, fontSize = 17.sp, color = colorValor)
+        Text(etiqueta, fontSize = 17.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(valor, fontSize = 17.sp, fontWeight = FontWeight.Bold)
     }
 }
 
 @Preview(showBackground = true)
 @Composable
-fun ResumenCarritoPreview() {
-    MaterialTheme { ResumenCarrito(6, 231.5, 23.15, 0.0, 0.0, 208.35) }
+fun ResultadoCuentaPreview() {
+    ManualviewTheme { ResultadoCuenta(20, 250.0, 1500.0, 300.0, 5, 0.0) }
 }
