@@ -3,10 +3,11 @@ package com.example.manualview
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -14,11 +15,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.manualview.ui.theme.ManualviewTheme
 import java.util.Locale
+import kotlin.math.floor
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -27,7 +30,7 @@ class MainActivity : ComponentActivity() {
             ManualviewTheme {
                 Surface(Modifier.fillMaxSize()) {
                     Box(Modifier.fillMaxSize().systemBarsPadding()) {
-                        ResenaScreen(onBack = { finish() })
+                        PresupuestoScreen()
                     }
                 }
             }
@@ -35,202 +38,284 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-private val ETIQUETAS = listOf("Familiar", "Económico", "Rápido", "Romántico", "Vegetariano")
-private val DESCRIPCION = listOf("Sin calificar", "Malo", "Regular", "Bueno", "Muy bueno", "Excelente")
-private const val MAX_COMENTARIO = 200
-private val dorado = Color(0xFFF9A825)
+enum class Categoria(val nombre: String) {
+    COMIDA("Comida"),
+    TRANSPORTE("Transporte"),
+    RENTA("Renta"),
+    OCIO("Ocio"),
+    OTROS("Otros")
+}
+
+data class Gasto(
+    val id: Int,
+    val concepto: String,
+    val monto: Double,
+    val categoria: Categoria
+)
+
+private val rojo = Color(0xFFB3261E)
+private val verde = Color(0xFF2E7D32)
+private val naranja = Color(0xFFF9A825)
+
+// sin decimales cuando el número es entero ($2,000), con 2 si no ($85.50)
+private fun dinero(x: Double): String =
+    if (x == floor(x)) "$" + String.format(Locale.US, "%,.0f", x)
+    else "$" + String.format(Locale.US, "%,.2f", x)
 
 @Composable
-fun ResenaScreen(onBack: () -> Unit = {}) {
-    var comida by remember { mutableIntStateOf(0) }
-    var servicio by remember { mutableIntStateOf(0) }
-    var ambiente by remember { mutableIntStateOf(0) }
-    var comentario by remember { mutableStateOf("") }
-    var etiquetas by remember { mutableStateOf(setOf<String>()) }
-    var publicada by remember { mutableStateOf(false) }
+fun PresupuestoScreen() {
+    var ingresoTexto by remember { mutableStateOf("") }
+    val gastos = remember { mutableStateListOf<Gasto>() }
+    var siguienteId by remember { mutableIntStateOf(1) }
 
-    // derivados
-    val completo = comida > 0 && servicio > 0 && ambiente > 0
-    val general = (comida + servicio + ambiente) / 3.0
-    val puedePublicar = completo && comentario.trim().length >= 20
+    val ingreso = ingresoTexto.toDoubleOrNull() ?: 0.0
 
     Column(
         Modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
-            .padding(horizontal = 16.dp, vertical = 8.dp)
+            .padding(16.dp)
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onClick = onBack) {
-                Text("←", fontSize = 24.sp, fontWeight = FontWeight.Bold)
-            }
-            Text("Escribe tu reseña", style = MaterialTheme.typography.headlineMedium)
-        }
+        Text("Mi presupuesto", style = MaterialTheme.typography.headlineMedium)
+        Spacer(Modifier.height(20.dp))
+
+        OutlinedTextField(
+            value = ingresoTexto,
+            onValueChange = { ingresoTexto = it },
+            label = { Text("Ingreso mensual") },
+            prefix = { Text("$ ") },
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth()
+        )
+
         Spacer(Modifier.height(12.dp))
+        ResumenPresupuesto(ingreso, gastos)
 
-        Text("Restaurante El Mezquite", fontSize = 24.sp, fontWeight = FontWeight.Bold)
-        Text("Califica tu experiencia", color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Spacer(Modifier.height(12.dp))
+        Spacer(Modifier.height(20.dp))
+        FormularioGasto(onAgregar = { concepto, monto, categoria ->
+            gastos.add(Gasto(siguienteId, concepto, monto, categoria))
+            siguienteId++
+        })
 
-        FilaCalificacion("Comida", comida) { comida = it }
-        FilaCalificacion("Servicio", servicio) { servicio = it }
-        FilaCalificacion("Ambiente", ambiente) { ambiente = it }
+        Spacer(Modifier.height(20.dp))
+        ListaGastos(gastos, onEliminar = { g -> gastos.remove(g) })
+    }
+}
 
-        if (completo) {
-            Card(
-                colors = CardDefaults.cardColors(containerColor = Color(0xFFF3EDF7)),
-                shape = RoundedCornerShape(20.dp),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(vertical = 12.dp)
+// concepto, monto, categoria y menuAbierto se quedan aquí: son estado de edición
+// y al padre solo le sirve recibir el gasto ya armado.
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun FormularioGasto(onAgregar: (concepto: String, monto: Double, Categoria) -> Unit) {
+    var concepto by remember { mutableStateOf("") }
+    var montoTexto by remember { mutableStateOf("") }
+    var categoria by remember { mutableStateOf(Categoria.COMIDA) }
+    var menuAbierto by remember { mutableStateOf(false) }
+
+    val monto = montoTexto.toDoubleOrNull()
+    val valido = concepto.isNotBlank() && monto != null && monto > 0
+
+    Column {
+        Text("Nuevo gasto", fontSize = 22.sp, fontWeight = FontWeight.Bold)
+        Spacer(Modifier.height(8.dp))
+
+        OutlinedTextField(
+            value = concepto,
+            onValueChange = { concepto = it },
+            label = { Text("Concepto") },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth()
+        )
+
+        Row(
+            Modifier.padding(top = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            OutlinedTextField(
+                value = montoTexto,
+                onValueChange = { montoTexto = it },
+                label = { Text("Monto") },
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                singleLine = true,
+                modifier = Modifier.weight(1f)
+            )
+
+            ExposedDropdownMenuBox(
+                expanded = menuAbierto,
+                onExpandedChange = { menuAbierto = it },
+                modifier = Modifier.weight(1f)
             ) {
-                Row(
-                    Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 20.dp, vertical = 18.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
+                OutlinedTextField(
+                    value = categoria.nombre,
+                    onValueChange = {},
+                    readOnly = true,
+                    label = { Text("Categoría") },
+                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = menuAbierto) },
+                    modifier = Modifier.menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable)
+                )
+                ExposedDropdownMenu(
+                    expanded = menuAbierto,
+                    onDismissRequest = { menuAbierto = false }
                 ) {
-                    Text(
-                        "Calificación general",
-                        fontSize = 18.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(
-                            String.format(Locale.US, "%.1f", general),
-                            fontSize = 24.sp,
-                            fontWeight = FontWeight.Bold
+                    Categoria.entries.forEach { c ->
+                        DropdownMenuItem(
+                            text = { Text(c.nombre) },
+                            onClick = {
+                                categoria = c
+                                menuAbierto = false
+                            }
                         )
-                        Spacer(Modifier.width(6.dp))
-                        Text("★", fontSize = 22.sp, color = dorado)
                     }
                 }
             }
         }
 
-        Spacer(Modifier.height(8.dp))
-        ComentarioField(comentario, { comentario = it }, MAX_COMENTARIO)
+        Spacer(Modifier.height(12.dp))
+        FilledTonalButton(
+            onClick = {
+                onAgregar(concepto.trim(), monto!!, categoria)
+                concepto = ""
+                montoTexto = ""
+            },
+            enabled = valido,
+            modifier = Modifier.fillMaxWidth().height(52.dp)
+        ) { Text("Agregar gasto", fontWeight = FontWeight.Bold, fontSize = 16.sp) }
+    }
+}
 
-        FlowRow(
-            Modifier.padding(top = 8.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            ETIQUETAS.forEach { e ->
-                val marcada = e in etiquetas
-                FilterChip(
-                    selected = marcada,
-                    onClick = { etiquetas = if (marcada) etiquetas - e else etiquetas + e },
-                    label = { Text(e, fontSize = 16.sp) },
-                    leadingIcon = if (marcada) {
-                        { Text("✓", fontSize = 16.sp, fontWeight = FontWeight.Bold) }
-                    } else null
-                )
+@Composable
+fun ListaGastos(gastos: List<Gasto>, onEliminar: (Gasto) -> Unit) {
+    Column {
+        Text("Gastos recientes", fontSize = 22.sp, fontWeight = FontWeight.Bold)
+        Spacer(Modifier.height(8.dp))
+        if (gastos.isEmpty()) {
+            Text("Todavía no hay gastos", color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        gastos.forEach { g ->
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Text(g.concepto, fontWeight = FontWeight.Bold, fontSize = 19.sp)
+                    Text(g.categoria.nombre, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                Text("−" + dinero(g.monto), color = rojo, fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                IconButton(onClick = { onEliminar(g) }) {
+                    Text(
+                        "✕",
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
             }
         }
-
-        Spacer(Modifier.height(24.dp))
-        Button(
-            onClick = { publicada = true },
-            enabled = puedePublicar,
-            modifier = Modifier.fillMaxWidth().height(52.dp)
-        ) { Text("Publicar", fontWeight = FontWeight.Bold, fontSize = 16.sp) }
-
-        if (publicada) {
-            Spacer(Modifier.height(16.dp))
-            ResumenResena(general, comentario, etiquetas)
-        }
-        Spacer(Modifier.height(16.dp))
     }
 }
 
 @Composable
-private fun FilaCalificacion(nombre: String, rating: Int, onChange: (Int) -> Unit) {
-    Text(nombre, fontSize = 18.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-    Row(
-        Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        RatingBar(rating, onChange)
-        Text(
-            if (rating > 0) DESCRIPCION[rating] else "",
-            color = MaterialTheme.colorScheme.primary,
-            fontWeight = FontWeight.Bold,
-            fontSize = 18.sp
-        )
-    }
-}
+fun ResumenPresupuesto(ingreso: Double, gastos: List<Gasto>) {
 
-// si tocas la estrella que ya estaba marcada se quita la calificación (rating = 0).
-// Lo dejé aquí dentro para que cualquier pantalla que use RatingBar ya lo traiga.
-@Composable
-fun RatingBar(rating: Int, onRatingChange: (Int) -> Unit, modifier: Modifier = Modifier) {
-    Row(modifier) {
-        for (i in 1..5) {
-            Text(
-                "★",
-                fontSize = 32.sp,
-                color = if (i <= rating) dorado else Color(0xFFCAC4D0),
-                modifier = Modifier
-                    .clickable { onRatingChange(if (i == rating) 0 else i) }
-                    .padding(horizontal = 4.dp, vertical = 2.dp)
-            )
-        }
-    }
-}
+    val total = gastos.sumOf { it.monto }
+    val saldo = ingreso - total
+    val porcentaje = if (ingreso > 0) (total / ingreso).toFloat() else 0f
+    val top = gastos
+        .groupBy { it.categoria }
+        .mapValues { (_, lista) -> lista.sumOf { it.monto } }
+        .maxByOrNull { it.value }
 
-@Composable
-fun ComentarioField(texto: String, onChange: (String) -> Unit, maximo: Int = 200) {
-    Column {
-        OutlinedTextField(
-            value = texto,
-            onValueChange = { if (it.length <= maximo) onChange(it) },
-            label = { Text("Comentario") },
-            minLines = 4,
-            modifier = Modifier.fillMaxWidth()
-        )
-        Text(
-            "${texto.length}/$maximo",
-            color = if (texto.length >= 180) Color.Red else MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier
-                .align(Alignment.End)
-                .padding(top = 4.dp)
-        )
+    val fondoCard = when {
+        porcentaje > 1f -> Color(0xFFFBE4E1)
+        porcentaje >= 0.8f -> Color(0xFFFFF5DC)
+        else -> Color(0xFFF3EDF7)
     }
-}
+    val colorBarra = when {
+        porcentaje > 1f -> rojo
+        porcentaje >= 0.8f -> naranja
+        else -> MaterialTheme.colorScheme.primary
+    }
 
-@Composable
-fun ResumenResena(general: Double, comentario: String, etiquetas: Set<String>) {
     Card(
-        colors = CardDefaults.cardColors(containerColor = Color(0xFFE6F4E7)),
-        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(containerColor = fondoCard),
+        shape = RoundedCornerShape(24.dp),
         modifier = Modifier.fillMaxWidth()
     ) {
-        Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Text("¡Reseña publicada!", fontWeight = FontWeight.Bold, fontSize = 20.sp)
-            Text("Calificación general: ${String.format(Locale.US, "%.1f", general)} ★")
-            Text(comentario)
-            if (etiquetas.isNotEmpty()) {
-                Text(
-                    etiquetas.joinToString(" · "),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+        Column(Modifier.padding(20.dp)) {
+            Row(Modifier.fillMaxWidth()) {
+                Column(Modifier.weight(1f)) {
+                    Text("Gastado", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(dinero(total), fontSize = 30.sp, fontWeight = FontWeight.Bold)
+                }
+                Column(Modifier.weight(1f)) {
+                    Text("Saldo", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(
+                        dinero(saldo),
+                        fontSize = 30.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = if (saldo >= 0) verde else rojo
+                    )
+                }
             }
+            Spacer(Modifier.height(12.dp))
+            LinearProgressIndicator(
+                progress = { porcentaje.coerceIn(0f, 1f) },
+                color = colorBarra,
+                trackColor = Color(0xFFE7E0EC),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(10.dp)
+            )
+            Spacer(Modifier.height(12.dp))
+            val textoTop = if (top != null) " · Mayor gasto: ${top.key.nombre} (${dinero(top.value)})" else ""
+            Text("${(porcentaje * 100).toInt()} % usado$textoTop", fontSize = 15.sp)
         }
+    }
+
+    if (porcentaje > 1f) {
+        Alerta(
+            fondo = Color(0xFFF9DEDC),
+            colorTexto = Color(0xFF8C1D18),
+            texto = "Te pasaste del presupuesto por ${dinero(total - ingreso)}"
+        )
+    } else if (porcentaje >= 0.8f) {
+        Alerta(
+            fondo = Color(0xFFFFDFB5),
+            colorTexto = Color(0xFF7A4A00),
+            texto = "Cuidado: pasaste el 80 %"
+        )
+    }
+}
+
+@Composable
+private fun Alerta(fondo: Color, colorTexto: Color, texto: String) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .padding(top = 12.dp)
+            .background(fondo, RoundedCornerShape(16.dp))
+            .padding(horizontal = 16.dp, vertical = 14.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text("⚠️", fontSize = 20.sp)
+        Spacer(Modifier.width(12.dp))
+        Text(texto, color = colorTexto, fontWeight = FontWeight.Bold, fontSize = 17.sp)
     }
 }
 
 @Preview(showBackground = true)
 @Composable
-fun RatingBarPreview() {
-    ManualviewTheme { RatingBar(rating = 4, onRatingChange = {}) }
-}
-
-@Preview(showBackground = true, heightDp = 800)
-@Composable
-fun ResenaScreenPreview() {
+fun ListaGastosPreview() {
     ManualviewTheme {
-        ResenaScreen()
+        ListaGastos(
+            gastos = listOf(
+                Gasto(1, "Renta mensual", 2000.0, Categoria.RENTA),
+                Gasto(2, "Despensa", 650.0, Categoria.COMIDA)
+            ),
+            onEliminar = {}
+        )
     }
 }
