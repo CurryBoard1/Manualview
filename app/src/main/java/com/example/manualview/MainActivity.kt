@@ -19,6 +19,8 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.manualview.ui.theme.ManualviewTheme
 import java.util.Locale
 
@@ -29,7 +31,7 @@ class MainActivity : ComponentActivity() {
             ManualviewTheme {
                 Surface(Modifier.fillMaxSize()) {
                     Box(Modifier.fillMaxSize().systemBarsPadding()) {
-                        CarritoScreen()
+                        CarritoScreen(viewModel = viewModel())
                     }
                 }
             }
@@ -37,38 +39,13 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-data class Producto(val nombre: String, val precio: Double)
-
 private val verde = Color(0xFF2E7D32)
 
 fun dinero(x: Double): String = "$" + String.format(Locale.US, "%,.2f", x)
 
 @Composable
-fun CarritoScreen() {
-    val catalogo = remember {
-        listOf(
-            Producto("SSD 6.7 KB  ", 24.0),
-            Producto("RAM 2 TB", 27.5),
-            Producto("ACEITE EN POLVO 1 KG", 52.0),
-            Producto("500 ROBUX", 38.0)
-        )
-    }
-    val cantidades = remember { mutableStateListOf(0, 0, 0, 0) }
-    var cupon by remember { mutableStateOf("") }
-    var confirmado by remember { mutableStateOf(false) }
-
-
-    val articulos = cantidades.sum()
-    val subtotal = catalogo.indices.sumOf { catalogo[it].precio * cantidades[it] }
-    val descuento = if (subtotal >= 200) subtotal * 0.10 else 0.0
-    val subtotalConDescuento = subtotal - descuento
-    val descCupon = if (cupon == "DONPEPE" && articulos > 0) 20.0 else 0.0
-    val envio = when {
-        articulos == 0 -> 0.0
-        subtotalConDescuento >= 150 -> 0.0
-        else -> 25.0
-    }
-    val total = (subtotalConDescuento - descCupon).coerceAtLeast(0.0) + envio
+fun CarritoScreen(viewModel: CarritoViewModel) {
+    val state by viewModel.state.collectAsStateWithLifecycle()
 
     Column(
         Modifier
@@ -88,7 +65,7 @@ fun CarritoScreen() {
                 contentAlignment = Alignment.Center
             ) {
                 Text(
-                    "$articulos",
+                    "${state.articulos}",
                     color = MaterialTheme.colorScheme.onPrimary,
                     fontWeight = FontWeight.Bold
                 )
@@ -101,19 +78,18 @@ fun CarritoScreen() {
                 .verticalScroll(rememberScrollState())
         ) {
             Spacer(Modifier.height(12.dp))
-            catalogo.forEachIndexed { i, producto ->
+            state.catalogo.forEachIndexed { i, producto ->
                 ProductoItem(
                     producto = producto,
-                    cantidad = cantidades[i],
-                    onCantidadChange = { cantidades[i] = it }
+                    cantidad = state.cantidades[i],
+                    onCantidadChange = { viewModel.onCantidadChange(i, it) }
                 )
                 HorizontalDivider()
             }
 
-            // el cupón vive aquí en el padre porque cambia el total
             OutlinedTextField(
-                value = cupon,
-                onValueChange = { cupon = it.uppercase() },
+                value = state.cupon,
+                onValueChange = { viewModel.onCuponChange(it) },
                 label = { Text("Cupón") },
                 singleLine = true,
                 modifier = Modifier
@@ -122,18 +98,25 @@ fun CarritoScreen() {
             )
 
             Spacer(Modifier.height(12.dp))
-            ResumenCarrito(articulos, subtotal, descuento, descCupon, envio, total)
+            ResumenCarrito(
+                articulos = state.articulos,
+                subtotal = state.subtotal,
+                descuento = state.descuento,
+                descCupon = state.descCupon,
+                envio = state.envio,
+                total = state.total
+            )
             Spacer(Modifier.height(12.dp))
         }
 
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             OutlinedButton(
-                onClick = { for (i in cantidades.indices) cantidades[i] = 0 },
+                onClick = { viewModel.onVaciar() },
                 modifier = Modifier.height(52.dp)
             ) { Text("Vaciar", fontWeight = FontWeight.Bold) }
             Button(
-                onClick = { confirmado = true },
-                enabled = articulos > 0,
+                onClick = { viewModel.onConfirmar() },
+                enabled = state.articulos > 0,
                 modifier = Modifier
                     .weight(1f)
                     .height(52.dp)
@@ -141,16 +124,15 @@ fun CarritoScreen() {
         }
     }
 
-    if (confirmado) {
+    if (state.confirmado) {
         AlertDialog(
-            onDismissRequest = { },
+            onDismissRequest = { viewModel.onConfirmadoCerrado() },
             title = { Text("Pedido confirmado") },
-            text = { Text("Son $articulos artículos. Total a pagar: ${dinero(total)}") },
+            text = { Text("Son ${state.articulos} artículos. Total a pagar: ${dinero(state.total)}") },
             confirmButton = {
                 TextButton(onClick = {
-                    for (i in cantidades.indices) cantidades[i] = 0
-                    cupon = ""
-                    confirmado = false
+                    viewModel.onConfirmadoCerrado()
+                    viewModel.onNuevaCompra()
                 }) { Text("Listo") }
             }
         )
