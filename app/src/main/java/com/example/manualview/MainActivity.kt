@@ -17,6 +17,8 @@ import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.manualview.ui.theme.ManualviewTheme
 
 class MainActivity : ComponentActivity() {
@@ -26,7 +28,7 @@ class MainActivity : ComponentActivity() {
             ManualviewTheme {
                 Surface(Modifier.fillMaxSize()) {
                     Box(Modifier.fillMaxSize().systemBarsPadding()) {
-                        TareasScreen()
+                        TareasScreen(viewModel = viewModel())
                     }
                 }
             }
@@ -54,28 +56,8 @@ data class Tarea(
 )
 
 @Composable
-fun TareasScreen() {
-    val tareas = remember { mutableStateListOf<Tarea>() }
-    var siguienteId by remember { mutableIntStateOf(1) }
-    var textoNueva by remember { mutableStateOf("") }
-    var prioridadNueva by remember { mutableStateOf(Prioridad.ALTA) }
-    var filtro by remember { mutableStateOf(Filtro.TODAS) }
-    var mostrarDialogo by remember { mutableStateOf(false) }
-
-    val pendientes = tareas.count { !it.hecha }
-    val hechas = tareas.size - pendientes
-    val tareasVisibles = when (filtro) {
-        Filtro.TODAS -> tareas.toList()
-        Filtro.PENDIENTES -> tareas.filter { !it.hecha }
-        Filtro.HECHAS -> tareas.filter { it.hecha }
-    }.sortedBy { it.prioridad }
-
-    fun agregar() {
-        if (textoNueva.isBlank()) return
-        tareas.add(Tarea(siguienteId, textoNueva.trim(), prioridadNueva))
-        siguienteId++
-        textoNueva = ""
-    }
+fun TareasScreen(viewModel: TareasViewModel) {
+    val state by viewModel.state.collectAsStateWithLifecycle()
 
     Column(
         Modifier
@@ -87,16 +69,16 @@ fun TareasScreen() {
 
         Row(verticalAlignment = Alignment.CenterVertically) {
             OutlinedTextField(
-                value = textoNueva,
-                onValueChange = { textoNueva = it },
+                value = state.textoNueva,
+                onValueChange = { viewModel.onTextoNuevaChange(it) },
                 placeholder = { Text("Nueva tarea") },
                 singleLine = true,
                 modifier = Modifier.weight(1f)
             )
             Spacer(Modifier.width(8.dp))
             FilledIconButton(
-                onClick = { agregar() },
-                enabled = textoNueva.isNotBlank(),
+                onClick = { viewModel.onAgregar() },
+                enabled = state.textoNueva.isNotBlank(),
                 shape = RoundedCornerShape(16.dp),
                 modifier = Modifier.size(56.dp)
             ) { Text("+", fontSize = 28.sp, fontWeight = FontWeight.Bold) }
@@ -109,7 +91,7 @@ fun TareasScreen() {
         ) {
             Text("Prioridad", color = MaterialTheme.colorScheme.onSurfaceVariant)
             Prioridad.entries.forEach { p ->
-                ChipSeleccion(p.etiqueta, prioridadNueva == p) { prioridadNueva = p }
+                ChipSeleccion(p.etiqueta, state.prioridadNueva == p) { viewModel.onPrioridadNuevaChange(p) }
             }
         }
 
@@ -118,27 +100,24 @@ fun TareasScreen() {
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             Filtro.entries.forEach { f ->
-                ChipSeleccion(f.etiqueta, filtro == f) { filtro = f }
+                ChipSeleccion(f.etiqueta, state.filtro == f) { viewModel.onFiltroChange(f) }
             }
         }
 
         HorizontalDivider(Modifier.padding(top = 8.dp))
 
         LazyColumn(Modifier.weight(1f)) {
-            items(tareasVisibles, key = { it.id }) { tarea ->
+            items(state.tareasVisibles, key = { it.id }) { tarea ->
                 TareaItem(
                     tarea = tarea,
-                    onCheckedChange = { nuevo ->
-                        val index = tareas.indexOfFirst { it.id == tarea.id }
-                        if (index != -1) tareas[index] = tareas[index].copy(hecha = nuevo)
-                    },
-                    onDelete = { tareas.removeAll { it.id == tarea.id } }
+                    onCheckedChange = { nuevo -> viewModel.onCheckedChange(tarea.id, nuevo) },
+                    onDelete = { viewModel.onDelete(tarea.id) }
                 )
                 HorizontalDivider()
             }
             item {
                 Text(
-                    "$pendientes pendientes de ${tareas.size}",
+                    "${state.pendientes} pendientes de ${state.tareas.size}",
                     fontWeight = FontWeight.Bold,
                     fontSize = 20.sp,
                     modifier = Modifier.padding(vertical = 16.dp)
@@ -147,20 +126,19 @@ fun TareasScreen() {
         }
 
         OutlinedButton(
-            onClick = { mostrarDialogo = true },
-            enabled = hechas > 0,
+            onClick = { viewModel.onMostrarDialogo(true) },
+            enabled = state.hechas > 0,
             modifier = Modifier.fillMaxWidth().height(52.dp)
         ) { Text("Borrar completadas", fontWeight = FontWeight.Bold) }
     }
 
-    if (mostrarDialogo) {
+    if (state.mostrarDialogo) {
         ConfirmarBorradoDialog(
-            cantidad = hechas,
+            cantidad = state.hechas,
             onConfirm = {
-                tareas.removeAll { it.hecha }
-                mostrarDialogo = false
+                viewModel.onBorrarCompletadas()
             },
-            onDismiss = { mostrarDialogo = false }
+            onDismiss = { viewModel.onMostrarDialogo(false) }
         )
     }
 }
