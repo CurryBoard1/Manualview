@@ -8,18 +8,19 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.manualview.ui.theme.ManualviewTheme
 
 class MainActivity : ComponentActivity() {
@@ -29,7 +30,7 @@ class MainActivity : ComponentActivity() {
             ManualviewTheme {
                 Surface(Modifier.fillMaxSize()) {
                     Box(Modifier.fillMaxSize().systemBarsPadding()) {
-                        InscripcionScreen()
+                        InscripcionScreen(viewModel = viewModel())
                     }
                 }
             }
@@ -37,75 +38,35 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-// taller -> lugares que quedan
-private val cupos = mapOf("Pintura" to 8, "Fotografía" to 6, "Guitarra" to 4)
-private val talleres = cupos.keys.toList()
-
-fun validarNombre(nombre: String): String? =
-    if (nombre.trim().length < 3) "Escribe tu nombre completo (mínimo 3 caracteres)" else null
-
-fun validarCorreo(correo: String): String? {
-    val arroba = correo.indexOf('@')
-    val punto = correo.indexOf('.', arroba + 1)
-    val bien = arroba > 0 && punto > arroba + 1 && punto < correo.length - 1
-    return if (bien) null else "Ingresa un correo válido"
-}
-
-fun validarEdad(edad: String): String? {
-    val n = edad.toIntOrNull()
-    return if (n == null || n < 12 || n > 99) "La edad debe estar entre 12 y 99" else null
-}
-
-fun validarAviso(acepta: Boolean): String? =
-    if (acepta) null else "Debes aceptar el aviso de privacidad"
-
 @Composable
-fun InscripcionScreen() {
-    var nombre by rememberSaveable { mutableStateOf("") }
-    var correo by rememberSaveable { mutableStateOf("") }
-    var edad by rememberSaveable { mutableStateOf("") }
-    var taller by rememberSaveable { mutableStateOf(talleres[0]) }
-    var aceptaAviso by rememberSaveable { mutableStateOf(false) }
-    var intentoEnviar by rememberSaveable { mutableStateOf(false) }
-    var inscrito by rememberSaveable { mutableStateOf(false) }
+fun InscripcionScreen(viewModel: InscripcionViewModel) {
+    val state by viewModel.state.collectAsStateWithLifecycle()
 
-    val errNombre = validarNombre(nombre)
-    val errCorreo = validarCorreo(correo)
-    val errEdad = validarEdad(edad)
-    val errAviso = validarAviso(aceptaAviso)
-
-    if (inscrito) {
+    if (state.inscrito) {
         ConfirmacionScreen(
-            nombre = nombre,
-            correo = correo,
-            taller = taller,
-            onNueva = {
-                nombre = ""
-                correo = ""
-                edad = ""
-                taller = talleres[0]
-                aceptaAviso = false
-                intentoEnviar = false
-                inscrito = false
-            }
+            nombre = state.nombre,
+            correo = state.correo,
+            taller = state.taller,
+            onNueva = { viewModel.onNuevaInscripcion() }
         )
     } else {
         InscripcionForm(
-            nombre = nombre, onNombreChange = { nombre = it },
-            correo = correo, onCorreoChange = { correo = it },
-            edad = edad, onEdadChange = { nueva -> edad = nueva.filter { it.isDigit() } },
-            taller = taller, onTallerChange = { taller = it },
-            aceptaAviso = aceptaAviso, onAceptaAvisoChange = { aceptaAviso = it },
-            errNombre = if (intentoEnviar) errNombre else null,
-            errCorreo = if (intentoEnviar) errCorreo else null,
-            errEdad = if (intentoEnviar) errEdad else null,
-            errAviso = if (intentoEnviar) errAviso else null,
-            onEnviar = {
-                intentoEnviar = true
-                if (errNombre == null && errCorreo == null && errEdad == null && errAviso == null) {
-                    inscrito = true
-                }
-            }
+            nombre = state.nombre,
+            onNombreChange = { viewModel.onNombreChange(it) },
+            correo = state.correo,
+            onCorreoChange = { viewModel.onCorreoChange(it) },
+            edad = state.edad,
+            onEdadChange = { viewModel.onEdadChange(it) },
+            taller = state.taller,
+            onTallerChange = { viewModel.onTallerChange(it) },
+            aceptaAviso = state.aceptaAviso,
+            onAceptaAvisoChange = { viewModel.onAceptaAvisoChange(it) },
+            errNombre = viewModel.errNombre,
+            errCorreo = viewModel.errCorreo,
+            errEdad = viewModel.errEdad,
+            errAviso = viewModel.errAviso,
+            cuposTaller = state.cuposTaller,
+            onEnviar = { viewModel.onEnviar() }
         )
     }
 }
@@ -119,6 +80,7 @@ fun InscripcionForm(
     taller: String, onTallerChange: (String) -> Unit,
     aceptaAviso: Boolean, onAceptaAvisoChange: (Boolean) -> Unit,
     errNombre: String?, errCorreo: String?, errEdad: String?, errAviso: String?,
+    cuposTaller: Int,
     onEnviar: () -> Unit
 ) {
     var menuAbierto by remember { mutableStateOf(false) }
@@ -202,7 +164,7 @@ fun InscripcionForm(
 
         Spacer(Modifier.height(16.dp))
         Text(
-            "Quedan ${cupos[taller]} lugares en este taller",
+            "Quedan $cuposTaller lugares en este taller",
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             textAlign = TextAlign.Center,
             modifier = Modifier.fillMaxWidth()
@@ -274,7 +236,7 @@ private fun FilaResumen(titulo: String, valor: String) {
 @Composable
 fun InscripcionPreview() {
     ManualviewTheme {
-        InscripcionScreen()
+        InscripcionScreen(viewModel = InscripcionViewModel())
     }
 }
 
