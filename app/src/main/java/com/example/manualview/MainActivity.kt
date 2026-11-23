@@ -6,6 +6,7 @@ import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.ui.Modifier
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.manualview.ui.theme.ManualviewTheme
 
 class MainActivity : ComponentActivity() {
@@ -15,7 +16,7 @@ class MainActivity : ComponentActivity() {
             ManualviewTheme {
                 Surface(Modifier.fillMaxSize()) {
                     Box(Modifier.fillMaxSize().systemBarsPadding()) {
-                        QuizScreen()
+                        QuizScreen(viewModel = viewModel())
                     }
                 }
             }

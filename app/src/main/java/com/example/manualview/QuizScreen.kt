@@ -14,6 +14,8 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.manualview.ui.theme.ManualviewTheme
 
 private val rojoBorde = Color(0xFFB3261E)
@@ -22,8 +24,8 @@ private val verdeBorde = Color(0xFF2E7D32)
 private val verdeFondo = Color(0xFFDDEFD9)
 
 @Composable
-fun QuizScreen(viewModel: QuizViewModel = remember { QuizViewModel() }) {
-    val state = viewModel.state
+fun QuizScreen(viewModel: QuizViewModel = viewModel()) {
+    val state by viewModel.state.collectAsStateWithLifecycle()
 
     when (state.pantalla) {
         Pantalla.INICIO -> InicioScreen(

@@ -1,74 +1,87 @@
 package com.example.manualview
 
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 
 class QuizViewModel : ViewModel() {
-    var state by mutableStateOf(QuizState())
-        private set
+    private val _state = MutableStateFlow(QuizState())
+    val state: StateFlow<QuizState> = _state.asStateFlow()
 
     fun onNombreChange(nuevoNombre: String) {
-        state = state.copy(nombre = nuevoNombre)
+        _state.update { it.copy(nombre = nuevoNombre) }
     }
 
     fun seleccionarOpcion(index: Int) {
-        if (!state.respondida) {
-            state = state.copy(seleccionada = index)
+        if (!_state.value.respondida) {
+            _state.update { it.copy(seleccionada = index) }
         }
     }
 
     fun confirmar() {
-        if (state.seleccionada != null && !state.respondida) {
-            val acerto = state.seleccionada == state.preguntaActual.correcta
-            state = state.copy(
-                respondida = true,
-                puntaje = if (acerto) state.puntaje + 1 else state.puntaje
-            )
+        val current = _state.value
+        if (current.seleccionada != null && !current.respondida) {
+            val acerto = current.seleccionada == current.preguntaActual.correcta
+            _state.update {
+                it.copy(
+                    respondida = true,
+                    puntaje = if (acerto) it.puntaje + 1 else it.puntaje
+                )
+            }
         }
     }
 
     fun siguiente() {
-        if (state.indicePregunta < preguntasList.size - 1) {
-            state = state.copy(
-                indicePregunta = state.indicePregunta + 1,
-                seleccionada = null,
-                respondida = false
-            )
+        val current = _state.value
+        if (current.indicePregunta < preguntasList.size - 1) {
+            _state.update {
+                it.copy(
+                    indicePregunta = it.indicePregunta + 1,
+                    seleccionada = null,
+                    respondida = false
+                )
+            }
         } else {
-            state = state.copy(pantalla = Pantalla.RESULTADO)
+            _state.update { it.copy(pantalla = Pantalla.RESULTADO) }
         }
     }
 
     fun reintentar() {
-        state = state.copy(
-            indicePregunta = 0,
-            seleccionada = null,
-            respondida = false,
-            puntaje = 0,
-            pantalla = Pantalla.QUIZ
-        )
+        _state.update {
+            it.copy(
+                indicePregunta = 0,
+                seleccionada = null,
+                respondida = false,
+                puntaje = 0,
+                pantalla = Pantalla.QUIZ
+            )
+        }
     }
 
     fun cambiarJugador() {
-        state = state.copy(
-            indicePregunta = 0,
-            seleccionada = null,
-            respondida = false,
-            puntaje = 0,
-            nombre = "",
-            pantalla = Pantalla.INICIO
-        )
+        _state.update {
+            it.copy(
+                indicePregunta = 0,
+                seleccionada = null,
+                respondida = false,
+                puntaje = 0,
+                nombre = "",
+                pantalla = Pantalla.INICIO
+            )
+        }
     }
 
     fun iniciarQuiz() {
-        state = state.copy(
-            indicePregunta = 0,
-            seleccionada = null,
-            respondida = false,
-            puntaje = 0,
-            pantalla = Pantalla.QUIZ
-        )
+        _state.update {
+            it.copy(
+                indicePregunta = 0,
+                seleccionada = null,
+                respondida = false,
+                puntaje = 0,
+                pantalla = Pantalla.QUIZ
+            )
+        }
     }
 }
