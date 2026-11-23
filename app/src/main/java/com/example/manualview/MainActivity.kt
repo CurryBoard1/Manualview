@@ -19,9 +19,10 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.manualview.ui.theme.ManualviewTheme
 import java.util.Locale
-import kotlin.math.ceil
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -30,7 +31,7 @@ class MainActivity : ComponentActivity() {
             ManualviewTheme {
                 Surface(Modifier.fillMaxSize()) {
                     Box(Modifier.fillMaxSize().systemBarsPadding()) {
-                        CuentaScreen()
+                        CuentaScreen(viewModel = viewModel())
                     }
                 }
             }
@@ -41,21 +42,8 @@ class MainActivity : ComponentActivity() {
 private fun dinero(x: Double) = "$" + String.format(Locale.US, "%,.2f", x)
 
 @Composable
-fun CuentaScreen() {
-    var montoTexto by remember { mutableStateOf("") }
-    var propinaPct by remember { mutableIntStateOf(10) }
-    var usaOtro by remember { mutableStateOf(false) }
-    var personas by remember { mutableIntStateOf(2) }
-    var redondear by remember { mutableStateOf(false) }
-
-    // derivados
-    val monto = montoTexto.toDoubleOrNull() ?: 0.0
-    val montoInvalido = montoTexto.isNotEmpty() && montoTexto.toDoubleOrNull() == null
-    val propina = monto * propinaPct / 100.0
-    val total = monto + propina
-    val sinRedondear = total / personas
-    val porPersona = if (redondear) ceil(sinRedondear) else sinRedondear
-    val sobrante = if (redondear) porPersona * personas - total else null
+fun CuentaScreen(viewModel: CuentaViewModel) {
+    val state by viewModel.state.collectAsStateWithLifecycle()
 
     Column(
         Modifier
@@ -67,13 +55,13 @@ fun CuentaScreen() {
         Spacer(Modifier.height(24.dp))
 
         OutlinedTextField(
-            value = montoTexto,
-            onValueChange = { montoTexto = it },
+            value = state.montoTexto,
+            onValueChange = { viewModel.onMontoChange(it) },
             label = { Text("Monto de la cuenta") },
             prefix = { Text("$ ") },
-            isError = montoInvalido,
+            isError = state.montoInvalido,
             supportingText = {
-                if (montoInvalido) Text("Monto no válido, se toma como $0")
+                if (state.montoInvalido) Text("Monto no válido, se toma como $0")
             },
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
             singleLine = true,
@@ -82,14 +70,14 @@ fun CuentaScreen() {
 
         Spacer(Modifier.height(8.dp))
         SelectorPropina(
-            porcentaje = propinaPct,
-            usaOtro = usaOtro,
-            onPorcentajeChange = { propinaPct = it },
-            onOtroChange = { usaOtro = it }
+            porcentaje = state.propinaPct,
+            usaOtro = false,
+            onPorcentajeChange = { viewModel.onPropinaChange(it) },
+            onOtroChange = { }
         )
 
         Spacer(Modifier.height(8.dp))
-        StepperPersonas(personas) { personas = it }
+        StepperPersonas(state.personas) { viewModel.onPersonasChange(it) }
 
         Row(
             Modifier
@@ -99,12 +87,19 @@ fun CuentaScreen() {
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text("Redondear por persona", fontSize = 20.sp)
-            Switch(checked = redondear, onCheckedChange = { redondear = it })
+            Switch(checked = state.redondear, onCheckedChange = { viewModel.onRedondearChange(it) })
         }
 
         HorizontalDivider(Modifier.padding(vertical = 8.dp))
 
-        ResultadoCuenta(propinaPct, propina, total, porPersona, personas, sobrante)
+        ResultadoCuenta(
+            propinaPct = state.propinaPct,
+            propina = state.propina,
+            total = state.total,
+            porPersona = state.porPersona,
+            personas = state.personas,
+            sobrante = state.sobrante
+        )
     }
 }
 
@@ -120,21 +115,17 @@ fun SelectorPropina(
         Spacer(Modifier.height(8.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             listOf(10, 15, 20).forEach { p ->
-                ChipPropina("$p %", !usaOtro && porcentaje == p) {
-                    onOtroChange(false)
+                ChipPropina("$p %", porcentaje == p) {
                     onPorcentajeChange(p)
                 }
             }
-            ChipPropina("Otro", usaOtro) { onOtroChange(true) }
         }
-        if (usaOtro) {
-            Text("$porcentaje %", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
-            Slider(
-                value = porcentaje.toFloat(),
-                onValueChange = { onPorcentajeChange(it.toInt()) },
-                valueRange = 0f..30f
-            )
-        }
+        Text("$porcentaje %", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+        Slider(
+            value = porcentaje.toFloat(),
+            onValueChange = { onPorcentajeChange(it.toInt()) },
+            valueRange = 0f..30f
+        )
     }
 }
 
