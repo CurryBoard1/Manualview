@@ -22,6 +22,8 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.manualview.ui.theme.ManualviewTheme
 
 class MainActivity : ComponentActivity() {
@@ -38,7 +40,7 @@ class MainActivity : ComponentActivity() {
                             .fillMaxSize()
                             .systemBarsPadding()
                     ) {
-                        LoginScreen()
+                        LoginScreen(viewModel = viewModel())
                     }
                 }
             }
@@ -46,63 +48,25 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-private const val CORREO_OK = "paciente@vida.mx"
-private const val PASS_OK = "Vida2025"
-private const val MAX_INTENTOS = 3
-
-enum class LoginEstado {
-    INACTIVO,
-    ERROR,
-    BLOQUEADO,
-    EXITO
-}
-
 @Composable
-fun LoginScreen() {
-    var email by remember { mutableStateOf("") }
-    var password by remember { mutableStateOf("") }
-    var recordarme by remember { mutableStateOf(false) }
-    var intentosFallidos by remember { mutableIntStateOf(0) }
-    var estado by remember { mutableStateOf(LoginEstado.INACTIVO) }
+fun LoginScreen(viewModel: LoginViewModel) {
+    val state by viewModel.state.collectAsStateWithLifecycle()
 
-    val mensajeError = when (estado) {
-        LoginEstado.ERROR -> "Correo o contraseña incorrectos\n(intento $intentosFallidos de $MAX_INTENTOS)"
-        LoginEstado.BLOQUEADO -> "Cuenta bloqueada\nDemasiados intentos fallidos, intenta de nuevo más tarde."
-        else -> null
-    }
-
-    when (estado) {
+    when (state.estado) {
         LoginEstado.EXITO -> HomeScreen(
-            email = email,
-            onLogout = {
-                email = ""
-                password = ""
-                intentosFallidos = 0
-                estado = LoginEstado.INACTIVO
-            }
+            email = state.email,
+            onLogout = { viewModel.onLogout() }
         )
         else -> LoginForm(
-            email = email,
-            onEmailChange = { email = it },
-            password = password,
-            onPasswordChange = { password = it },
-            recordarme = recordarme,
-            onRecordarmeChange = { recordarme = it },
-            mensajeError = mensajeError,
-            bloqueado = estado == LoginEstado.BLOQUEADO,
-            onLogin = {
-                if (email == CORREO_OK && password == PASS_OK) {
-                    intentosFallidos = 0
-                    estado = LoginEstado.EXITO
-                } else {
-                    intentosFallidos++
-                    estado = if (intentosFallidos >= MAX_INTENTOS) {
-                        LoginEstado.BLOQUEADO
-                    } else {
-                        LoginEstado.ERROR
-                    }
-                }
-            }
+            email = state.email,
+            onEmailChange = { viewModel.onEmailChange(it) },
+            password = state.password,
+            onPasswordChange = { viewModel.onPasswordChange(it) },
+            recordarme = state.recordarme,
+            onRecordarmeChange = { viewModel.onRecordarmeChange(it) },
+            mensajeError = state.mensajeError,
+            bloqueado = state.bloqueado,
+            onLogin = { viewModel.onLogin() }
         )
     }
 }
@@ -249,7 +213,6 @@ fun LoginForm(
     }
 }
 
-
 @Composable
 fun PasswordField(
     value: String,
@@ -319,7 +282,7 @@ fun HomeScreen(
 @Composable
 fun LoginScreenPreview() {
     ManualviewTheme {
-        LoginScreen()
+        LoginScreen(viewModel = LoginViewModel())
     }
 }
 
