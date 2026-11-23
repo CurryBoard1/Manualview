@@ -17,6 +17,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.manualview.ui.theme.ManualviewTheme
 import java.util.Locale
 
@@ -27,7 +29,7 @@ class MainActivity : ComponentActivity() {
             ManualviewTheme {
                 Surface(Modifier.fillMaxSize()) {
                     Box(Modifier.fillMaxSize().systemBarsPadding()) {
-                        ResenaScreen(onBack = { finish() })
+                        ResenaScreen(viewModel = viewModel(), onBack = { finish() })
                     }
                 }
             }
@@ -35,24 +37,11 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-private val ETIQUETAS = listOf("Familiar", "Económico", "Rápido", "Romántico", "Vegetariano")
-private val DESCRIPCION = listOf("Sin calificar", "Malo", "Regular", "Bueno", "Muy bueno", "Excelente")
-private const val MAX_COMENTARIO = 200
 private val dorado = Color(0xFFF9A825)
 
 @Composable
-fun ResenaScreen(onBack: () -> Unit = {}) {
-    var comida by remember { mutableIntStateOf(0) }
-    var servicio by remember { mutableIntStateOf(0) }
-    var ambiente by remember { mutableIntStateOf(0) }
-    var comentario by remember { mutableStateOf("") }
-    var etiquetas by remember { mutableStateOf(setOf<String>()) }
-    var publicada by remember { mutableStateOf(false) }
-
-    // derivados
-    val completo = comida > 0 && servicio > 0 && ambiente > 0
-    val general = (comida + servicio + ambiente) / 3.0
-    val puedePublicar = completo && comentario.trim().length >= 20
+fun ResenaScreen(viewModel: ResenaViewModel, onBack: () -> Unit = {}) {
+    val state by viewModel.state.collectAsStateWithLifecycle()
 
     Column(
         Modifier
@@ -72,11 +61,11 @@ fun ResenaScreen(onBack: () -> Unit = {}) {
         Text("Califica tu experiencia", color = MaterialTheme.colorScheme.onSurfaceVariant)
         Spacer(Modifier.height(12.dp))
 
-        FilaCalificacion("Comida", comida) { comida = it }
-        FilaCalificacion("Servicio", servicio) { servicio = it }
-        FilaCalificacion("Ambiente", ambiente) { ambiente = it }
+        FilaCalificacion("Comida", state.comida) { viewModel.onComidaChange(it) }
+        FilaCalificacion("Servicio", state.servicio) { viewModel.onServicioChange(it) }
+        FilaCalificacion("Ambiente", state.ambiente) { viewModel.onAmbienteChange(it) }
 
-        if (completo) {
+        if (state.completo) {
             Card(
                 colors = CardDefaults.cardColors(containerColor = Color(0xFFF3EDF7)),
                 shape = RoundedCornerShape(20.dp),
@@ -98,7 +87,7 @@ fun ResenaScreen(onBack: () -> Unit = {}) {
                     )
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(
-                            String.format(Locale.US, "%.1f", general),
+                            String.format(Locale.US, "%.1f", state.general),
                             fontSize = 24.sp,
                             fontWeight = FontWeight.Bold
                         )
@@ -110,17 +99,17 @@ fun ResenaScreen(onBack: () -> Unit = {}) {
         }
 
         Spacer(Modifier.height(8.dp))
-        ComentarioField(comentario, { comentario = it }, MAX_COMENTARIO)
+        ComentarioField(state.comentario, { viewModel.onComentarioChange(it) }, maxComentario)
 
         FlowRow(
             Modifier.padding(top = 8.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            ETIQUETAS.forEach { e ->
-                val marcada = e in etiquetas
+            todasLasEtiquetas.forEach { e ->
+                val marcada = e in state.etiquetas
                 FilterChip(
                     selected = marcada,
-                    onClick = { etiquetas = if (marcada) etiquetas - e else etiquetas + e },
+                    onClick = { viewModel.onToggleEtiqueta(e) },
                     label = { Text(e, fontSize = 16.sp) },
                     leadingIcon = if (marcada) {
                         { Text("✓", fontSize = 16.sp, fontWeight = FontWeight.Bold) }
@@ -131,14 +120,14 @@ fun ResenaScreen(onBack: () -> Unit = {}) {
 
         Spacer(Modifier.height(24.dp))
         Button(
-            onClick = { publicada = true },
-            enabled = puedePublicar,
+            onClick = { viewModel.onPublicar() },
+            enabled = state.puedePublicar,
             modifier = Modifier.fillMaxWidth().height(52.dp)
         ) { Text("Publicar", fontWeight = FontWeight.Bold, fontSize = 16.sp) }
 
-        if (publicada) {
+        if (state.publicada) {
             Spacer(Modifier.height(16.dp))
-            ResumenResena(general, comentario, etiquetas)
+            ResumenResena(state.general, state.comentario, state.etiquetas)
         }
         Spacer(Modifier.height(16.dp))
     }
@@ -154,7 +143,7 @@ private fun FilaCalificacion(nombre: String, rating: Int, onChange: (Int) -> Uni
     ) {
         RatingBar(rating, onChange)
         Text(
-            if (rating > 0) DESCRIPCION[rating] else "",
+            if (rating > 0) descripciones[rating] else "",
             color = MaterialTheme.colorScheme.primary,
             fontWeight = FontWeight.Bold,
             fontSize = 18.sp
@@ -231,6 +220,6 @@ fun RatingBarPreview() {
 @Composable
 fun ResenaScreenPreview() {
     ManualviewTheme {
-        ResenaScreen()
+        ResenaScreen(viewModel = ResenaViewModel())
     }
 }
