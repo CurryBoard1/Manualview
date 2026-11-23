@@ -19,6 +19,8 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.manualview.ui.theme.ManualviewTheme
 import java.util.Locale
 import kotlin.math.floor
@@ -30,7 +32,7 @@ class MainActivity : ComponentActivity() {
             ManualviewTheme {
                 Surface(Modifier.fillMaxSize()) {
                     Box(Modifier.fillMaxSize().systemBarsPadding()) {
-                        PresupuestoScreen()
+                        PresupuestoScreen(viewModel = viewModel())
                     }
                 }
             }
@@ -38,37 +40,13 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-enum class Categoria(val nombre: String) {
-    COMIDA("Comida"),
-    TRANSPORTE("Transporte"),
-    RENTA("Renta"),
-    OCIO("Ocio"),
-    OTROS("Otros")
-}
-
-data class Gasto(
-    val id: Int,
-    val concepto: String,
-    val monto: Double,
-    val categoria: Categoria
-)
-
-private val rojo = Color(0xFFB3261E)
-private val verde = Color(0xFF2E7D32)
-private val naranja = Color(0xFFF9A825)
-
-// sin decimales cuando el número es entero ($2,000), con 2 si no ($85.50)
 private fun dinero(x: Double): String =
     if (x == floor(x)) "$" + String.format(Locale.US, "%,.0f", x)
     else "$" + String.format(Locale.US, "%,.2f", x)
 
 @Composable
-fun PresupuestoScreen() {
-    var ingresoTexto by remember { mutableStateOf("") }
-    val gastos = remember { mutableStateListOf<Gasto>() }
-    var siguienteId by remember { mutableIntStateOf(1) }
-
-    val ingreso = ingresoTexto.toDoubleOrNull() ?: 0.0
+fun PresupuestoScreen(viewModel: PresupuestoViewModel) {
+    val state by viewModel.state.collectAsStateWithLifecycle()
 
     Column(
         Modifier
@@ -80,8 +58,8 @@ fun PresupuestoScreen() {
         Spacer(Modifier.height(20.dp))
 
         OutlinedTextField(
-            value = ingresoTexto,
-            onValueChange = { ingresoTexto = it },
+            value = state.ingresoTexto,
+            onValueChange = { viewModel.onIngresoChange(it) },
             label = { Text("Ingreso mensual") },
             prefix = { Text("$ ") },
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
@@ -90,39 +68,28 @@ fun PresupuestoScreen() {
         )
 
         Spacer(Modifier.height(12.dp))
-        ResumenPresupuesto(ingreso, gastos)
+        ResumenPresupuesto(state)
 
         Spacer(Modifier.height(20.dp))
-        FormularioGasto(onAgregar = { concepto, monto, categoria ->
-            gastos.add(Gasto(siguienteId, concepto, monto, categoria))
-            siguienteId++
-        })
+        FormularioGasto(viewModel)
 
         Spacer(Modifier.height(20.dp))
-        ListaGastos(gastos, onEliminar = { g -> gastos.remove(g) })
+        ListaGastos(state.gastos, onEliminar = { viewModel.onEliminarGasto(it) })
     }
 }
 
-// concepto, monto, categoria y menuAbierto se quedan aquí: son estado de edición
-// y al padre solo le sirve recibir el gasto ya armado.
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun FormularioGasto(onAgregar: (concepto: String, monto: Double, Categoria) -> Unit) {
-    var concepto by remember { mutableStateOf("") }
-    var montoTexto by remember { mutableStateOf("") }
-    var categoria by remember { mutableStateOf(Categoria.COMIDA) }
-    var menuAbierto by remember { mutableStateOf(false) }
-
-    val monto = montoTexto.toDoubleOrNull()
-    val valido = concepto.isNotBlank() && monto != null && monto > 0
+fun FormularioGasto(viewModel: PresupuestoViewModel) {
+    val state by viewModel.state.collectAsStateWithLifecycle()
 
     Column {
         Text("Nuevo gasto", fontSize = 22.sp, fontWeight = FontWeight.Bold)
         Spacer(Modifier.height(8.dp))
 
         OutlinedTextField(
-            value = concepto,
-            onValueChange = { concepto = it },
+            value = state.formConcepto,
+            onValueChange = { viewModel.onFormConceptoChange(it) },
             label = { Text("Concepto") },
             singleLine = true,
             modifier = Modifier.fillMaxWidth()
@@ -133,8 +100,8 @@ fun FormularioGasto(onAgregar: (concepto: String, monto: Double, Categoria) -> U
             horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             OutlinedTextField(
-                value = montoTexto,
-                onValueChange = { montoTexto = it },
+                value = state.formMontoTexto,
+                onValueChange = { viewModel.onFormMontoChange(it) },
                 label = { Text("Monto") },
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                 singleLine = true,
@@ -142,28 +109,28 @@ fun FormularioGasto(onAgregar: (concepto: String, monto: Double, Categoria) -> U
             )
 
             ExposedDropdownMenuBox(
-                expanded = menuAbierto,
-                onExpandedChange = { menuAbierto = it },
+                expanded = state.formMenuAbierto,
+                onExpandedChange = { viewModel.onFormMenuChange(it) },
                 modifier = Modifier.weight(1f)
             ) {
                 OutlinedTextField(
-                    value = categoria.nombre,
+                    value = state.formCategoria.nombre,
                     onValueChange = {},
                     readOnly = true,
                     label = { Text("Categoría") },
-                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = menuAbierto) },
+                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = state.formMenuAbierto) },
                     modifier = Modifier.menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable)
                 )
                 ExposedDropdownMenu(
-                    expanded = menuAbierto,
-                    onDismissRequest = { menuAbierto = false }
+                    expanded = state.formMenuAbierto,
+                    onDismissRequest = { viewModel.onFormMenuChange(false) }
                 ) {
                     Categoria.entries.forEach { c ->
                         DropdownMenuItem(
                             text = { Text(c.nombre) },
                             onClick = {
-                                categoria = c
-                                menuAbierto = false
+                                viewModel.onFormCategoriaChange(c)
+                                viewModel.onFormMenuChange(false)
                             }
                         )
                     }
@@ -173,12 +140,8 @@ fun FormularioGasto(onAgregar: (concepto: String, monto: Double, Categoria) -> U
 
         Spacer(Modifier.height(12.dp))
         FilledTonalButton(
-            onClick = {
-                onAgregar(concepto.trim(), monto!!, categoria)
-                concepto = ""
-                montoTexto = ""
-            },
-            enabled = valido,
+            onClick = { viewModel.onAgregarGasto() },
+            enabled = state.formValido,
             modifier = Modifier.fillMaxWidth().height(52.dp)
         ) { Text("Agregar gasto", fontWeight = FontWeight.Bold, fontSize = 16.sp) }
     }
@@ -203,7 +166,7 @@ fun ListaGastos(gastos: List<Gasto>, onEliminar: (Gasto) -> Unit) {
                     Text(g.concepto, fontWeight = FontWeight.Bold, fontSize = 19.sp)
                     Text(g.categoria.nombre, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
-                Text("−" + dinero(g.monto), color = rojo, fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                Text("−" + dinero(g.monto), color = Color(0xFFB3261E), fontWeight = FontWeight.Bold, fontSize = 18.sp)
                 IconButton(onClick = { onEliminar(g) }) {
                     Text(
                         "✕",
@@ -218,15 +181,11 @@ fun ListaGastos(gastos: List<Gasto>, onEliminar: (Gasto) -> Unit) {
 }
 
 @Composable
-fun ResumenPresupuesto(ingreso: Double, gastos: List<Gasto>) {
-
-    val total = gastos.sumOf { it.monto }
-    val saldo = ingreso - total
-    val porcentaje = if (ingreso > 0) (total / ingreso).toFloat() else 0f
-    val top = gastos
-        .groupBy { it.categoria }
-        .mapValues { (_, lista) -> lista.sumOf { it.monto } }
-        .maxByOrNull { it.value }
+fun ResumenPresupuesto(state: PresupuestoState) {
+    val total = state.total
+    val saldo = state.saldo
+    val porcentaje = state.porcentaje
+    val top = state.topCategoria
 
     val fondoCard = when {
         porcentaje > 1f -> Color(0xFFFBE4E1)
@@ -234,8 +193,8 @@ fun ResumenPresupuesto(ingreso: Double, gastos: List<Gasto>) {
         else -> Color(0xFFF3EDF7)
     }
     val colorBarra = when {
-        porcentaje > 1f -> rojo
-        porcentaje >= 0.8f -> naranja
+        porcentaje > 1f -> Color(0xFFB3261E)
+        porcentaje >= 0.8f -> Color(0xFFF9A825)
         else -> MaterialTheme.colorScheme.primary
     }
 
@@ -256,7 +215,7 @@ fun ResumenPresupuesto(ingreso: Double, gastos: List<Gasto>) {
                         dinero(saldo),
                         fontSize = 30.sp,
                         fontWeight = FontWeight.Bold,
-                        color = if (saldo >= 0) verde else rojo
+                        color = if (saldo >= 0) Color(0xFF2E7D32) else Color(0xFFB3261E)
                     )
                 }
             }
@@ -270,7 +229,7 @@ fun ResumenPresupuesto(ingreso: Double, gastos: List<Gasto>) {
                     .height(10.dp)
             )
             Spacer(Modifier.height(12.dp))
-            val textoTop = if (top != null) " · Mayor gasto: ${top.key.nombre} (${dinero(top.value)})" else ""
+            val textoTop = if (top != null) " · Mayor gasto: ${top.first.nombre} (${dinero(top.second)})" else ""
             Text("${(porcentaje * 100).toInt()} % usado$textoTop", fontSize = 15.sp)
         }
     }
@@ -279,7 +238,7 @@ fun ResumenPresupuesto(ingreso: Double, gastos: List<Gasto>) {
         Alerta(
             fondo = Color(0xFFF9DEDC),
             colorTexto = Color(0xFF8C1D18),
-            texto = "Te pasaste del presupuesto por ${dinero(total - ingreso)}"
+            texto = "Te pasaste del presupuesto por ${dinero(total - state.ingreso)}"
         )
     } else if (porcentaje >= 0.8f) {
         Alerta(
