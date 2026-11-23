@@ -14,6 +14,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.manualview.ui.theme.ManualviewTheme
 
 private val GreenColor = Color(0xFF2E7D32)
@@ -21,8 +23,8 @@ private val YellowColor = Color(0xFFF9A825)
 private val RedColor = Color(0xFFB3261E)
 
 @Composable
-fun AforoScreen(viewModel: AforoViewModel = remember { AforoViewModel() }) {
-    val state = viewModel.state
+fun AforoScreen(viewModel: AforoViewModel = viewModel()) {
+    val state by viewModel.state.collectAsStateWithLifecycle()
 
     AforoContent(
         state = state,

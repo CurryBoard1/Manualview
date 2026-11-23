@@ -1,42 +1,55 @@
 package com.example.manualview
 
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 
 class AforoViewModel : ViewModel() {
-    var state by mutableStateOf(AforoState())
-        private set
+    private val _state = MutableStateFlow(AforoState())
+    val state: StateFlow<AforoState> = _state.asStateFlow()
 
     fun enter() {
-        if (state.canEnter) {
-            state = state.copy(
-                currentCount = state.currentCount + 1,
-                dailyVisits = state.dailyVisits + 1,
-            )
+        _state.update { current ->
+            if (current.canEnter) {
+                current.copy(
+                    currentCount = current.currentCount + 1,
+                    dailyVisits = current.dailyVisits + 1,
+                )
+            } else {
+                current
+            }
         }
     }
 
     fun exit() {
-        if (state.canExit) {
-            state = state.copy(
-                currentCount = state.currentCount - 1,
-            )
+        _state.update { current ->
+            if (current.canExit) {
+                current.copy(
+                    currentCount = current.currentCount - 1,
+                )
+            } else {
+                current
+            }
         }
     }
 
     fun addGroup(count: Int) {
-        val added = (state.currentCount + count).coerceAtMost(state.maxCapacity) - state.currentCount
-        if (added > 0) {
-            state = state.copy(
-                currentCount = state.currentCount + added,
-                dailyVisits = state.dailyVisits + added,
-            )
+        _state.update { current ->
+            val added = (current.currentCount + count).coerceAtMost(current.maxCapacity) - current.currentCount
+            if (added > 0) {
+                current.copy(
+                    currentCount = current.currentCount + added,
+                    dailyVisits = current.dailyVisits + added,
+                )
+            } else {
+                current
+            }
         }
     }
 
     fun reset() {
-        state = AforoState()
+        _state.value = AforoState()
     }
 }
